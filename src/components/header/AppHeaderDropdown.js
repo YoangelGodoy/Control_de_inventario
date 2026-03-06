@@ -23,14 +23,23 @@ import {
 import CIcon from '@coreui/icons-react'
 import { useNavigate } from 'react-router-dom';
 import avatar8 from './../../assets/images/avatars/8.jpg'
+import { createClient } from '../../../supabase/client';
 
 const AppHeaderDropdown = () => {
+  const navigate = useNavigate();
+  const supabase = createClient();
 
-  const navigate = useNavigate(); 
-
-  const handleLockAccount = () => {
-    localStorage.removeItem('user'); 
-    navigate('/'); 
+  const handleLogout = async () => {
+    try {
+      // Cerrar sesión en Supabase
+      await supabase.auth.signOut();
+      // Redirigir al login
+      navigate('/login');
+    } catch (error) {
+      console.error('Error al cerrar sesión:', error);
+      // Redirigir al login incluso si hay error
+      navigate('/login');
+    }
   };
 
   return (
@@ -41,7 +50,7 @@ const AppHeaderDropdown = () => {
       <CDropdownMenu className="pt-0" placement="bottom-end">
       <CDropdownHeader className="bg-body-secondary fw-semibold mb-2">Cuenta</CDropdownHeader>
         <CDropdownDivider />
-        <CDropdownItem onClick={handleLockAccount} href="#">
+        <CDropdownItem onClick={handleLogout} href="#">
           <CIcon icon={cilExitToApp} className="me-2" />
           Salir
         </CDropdownItem>
@@ -50,4 +59,5 @@ const AppHeaderDropdown = () => {
   )
 }
 
-export default AppHeaderDropdown
+export default AppHeaderDropdown;
+

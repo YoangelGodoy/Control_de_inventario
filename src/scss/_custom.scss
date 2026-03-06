@@ -1,5 +1,5 @@
 // Here you can add other styles
-
+/* Estilos para mantener la tabla estática */
 .bg-primary {
     background-color: #004186de !important;
 }
@@ -20,7 +20,6 @@
     background-color: #013063de;
     color: white;
 }
-
 .delete{
     width: 2cm;
     color: white;
@@ -80,8 +79,37 @@
     background-position: center;
     height: 100vh;
 }
-.logo{
-    height: 80px !important;
+/* Forzamos la altura del cabezal del sidebar */
+.sidebar-header {
+    height: 114px !important; /* Aumentamos el espacio disponible */
+    background-color: transparent !important;
+}
+
+.logo-maximized {
+    /* Eliminamos restricciones de CoreUI */
+    margin-right: 10px !important; /* Un pequeño margen a la derecha */
+    max-height: 300px !important; 
+    width: 90% !important; /* Que ocupe casi todo el ancho del sidebar */
+    
+    /* Mantenemos la proporción sin deformar */
+    object-fit: contain !important;
+    
+    /* Aseguramos que no haya paddings ocultos */
+    padding: 5px 0;
+    
+    /* Un pequeño brillo o sombra para que resalte más */
+    filter: drop-shadow(0px 4px 6px rgba(0, 0, 0, 0.3));
+    
+    transition: all 0.3s ease-in-out;
+}
+
+/* Ajuste para cuando el sidebar se encoge (narrow) */
+.sidebar-narrow .sidebar-header {
+    height: 60px !important;
+}
+.sidebar-narrow .logo-maximized {
+    height: 40px !important;
+    width: auto !important;
 }
 
 .modal{
@@ -93,13 +121,25 @@
     background-color: red;
 }
 //logo del panel principal
-.border-bottom-logo{
-    border-bottom: solid white 0.1px!important;
-    width: 100cm !important;
+.border-bottom-logo {
+    position: relative; /* Necesario para posicionar la línea */
+    padding-bottom: 10px !important; /* Espacio entre el logo y la línea */
+    margin-bottom: 10px;  /* Espacio entre la línea y el menú */
 }
+
+.border-bottom-logo::after {
+    content: "";
+    position: absolute;
+    bottom: 0;
+    left: 6%;      /* Esto hace que la línea empiece un 15% después del borde izquierdo */
+    right: 6%;     /* Esto hace que termine un 15% antes del borde derecho */
+    height: 1px;    /* El grosor de la línea */
+    background-color: rgb(255, 255, 255); /* Blanco sutil */
+}
+
 .border-top-logo{
     border-top: solid white 0.1px!important;
-    width: 50cm !important;
+    width: 30cm !important;
 }
 
 /* .login-right{

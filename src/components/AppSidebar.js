@@ -12,7 +12,7 @@ import CIcon from '@coreui/icons-react';
 
 import { AppSidebarNav } from './AppSidebarNav';
 
-import logo from 'src/assets/images/logo3.png';
+import logo from 'src/assets/images/logo_parts2.png';
 import '../scss/_custom.scss'
 // sidebar nav config
 import navigation from '../_nav';
@@ -33,10 +33,14 @@ const AppSidebar = () => {
         dispatch({ type: 'set', sidebarShow: visible });
       }}
     >
-      <CSidebarHeader>
-      <div className="border-bottom-logo" style={{paddingBottom:"17px", paddingTop:"5x", display: "flex", alignItems: "center", justifyContent: "left", textAlign: "center"}}>
-        <img className='logo' src={logo} alt="Logo" style={{ width: '100%', height: 'auto' }} />
-      </div>  
+      <CSidebarHeader className="border-bottom-logo p-0 d-flex justify-content-center">
+        <CSidebarBrand className="d-flex align-items-center justify-content-center w-100" style={{ height: '114px' }}>
+          <img 
+            className="logo-maximized" 
+            src={logo} 
+            alt="Logo" 
+          />
+        </CSidebarBrand>
       </CSidebarHeader>
       <AppSidebarNav items={navigation} />
       
