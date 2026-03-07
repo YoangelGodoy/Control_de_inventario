@@ -5,22 +5,22 @@ import {
   CTableHeaderCell, CTableBody, CTableDataCell,
   CModal, CModalHeader, CModalTitle, CModalBody, CModalFooter,
   CFormLabel, CSpinner, CPagination, CPaginationItem,
-  CFormFeedback
+  CFormFeedback, CBadge
 } from '@coreui/react';
 import { CIcon } from '@coreui/icons-react';
 import { 
   cilPlus, cilSearch, cilChevronLeft, cilChevronRight, 
   cilPencil, cilTrash, 
-  cilUser
+  cilAddressBook
 } from '@coreui/icons';
 import { createClient } from "../../../supabase/client"; 
 import { toast } from "sonner";
 
-const ClientesCoreUI = () => {
+const Empleados = () => {
   const supabase = createClient();
 
   // Estados de datos
-  const [clientes, setClientes] = useState([]);
+  const [empleados, setEmpleados] = useState([]);
   
   // Estados de Paginación
   const [currentPage, setCurrentPage] = useState(1);
@@ -34,7 +34,7 @@ const ClientesCoreUI = () => {
   const [modalDeleteVisible, setModalDeleteVisible] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [updateData, setUpdateData] = useState(null);
-  const [clienteToDelete, setClienteToDelete] = useState(null);
+  const [empleadoToDelete, setEmpleadoToDelete] = useState(null);
   const [validated, setValidated] = useState(false); 
   const [idError, setIdError] = useState(false);
 
@@ -42,37 +42,36 @@ const ClientesCoreUI = () => {
     identificacion: '', 
     nombre: '', 
     telefono: '', 
-    email: '', 
-    direccion: ''
+    activo: true
   };
   const [formData, setFormData] = useState(initialFormState);
 
   // 1. Cargar Datos con Paginación
-  const fetchClientes = useCallback(async () => {
+  const fetchEmpleados = useCallback(async () => {
     setLoading(true);
     try {
       const from = (currentPage - 1) * PAGE_SIZE;
       const to = from + PAGE_SIZE - 1;
 
       const { data, count, error } = await supabase
-        .from("clientes")
+        .from("empleados")
         .select("*", { count: 'exact' })
         .order("created_at", { ascending: false })
         .range(from, to);
 
       if (error) throw error;
-      setClientes(data || []);
+      setEmpleados(data || []);
       setTotalRecords(count || 0);
     } catch (error) {
-      toast.error("Error al cargar clientes: " + error.message);
+      toast.error("Error al cargar empleados: " + error.message);
     } finally {
       setLoading(false);
     }
   }, [supabase, currentPage]);
 
   useEffect(() => {
-    fetchClientes();
-  }, [fetchClientes]);
+    fetchEmpleados();
+  }, [fetchEmpleados]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -85,8 +84,7 @@ const ClientesCoreUI = () => {
         identificacion: updateData.identificacion || '',
         nombre: updateData.nombre || '',
         telefono: updateData.telefono || '',
-        email: updateData.email || '',
-        direccion: updateData.direccion || ''
+        activo: updateData.activo ?? true
       });
     } else {
       setFormData(initialFormState);
@@ -112,47 +110,31 @@ const ClientesCoreUI = () => {
     setIdError(false);
   };
 
-  // --- VALIDACIONES ANTES DE ENVIAR ---
-  const validateForm = () => {
-    if (!formData.identificacion.trim()) {
-      toast.warning("La identificación es obligatoria");
-      return false;
-    }
-    if (!formData.nombre.trim()) {
-      toast.warning("El nombre es obligatorio");
-      return false;
-    }
-    return true;
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     const form = e.currentTarget;
-    
     setValidated(true);
 
-    if (form.checkValidity() === false || !validateForm()) {
+    if (form.checkValidity() === false) {
       e.stopPropagation();
       return;
     }
     
     setSubmitting(true);
     try {
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError || !user) throw new Error("Sesión de usuario no encontrada");
-
       const idLimpia = formData.identificacion.trim().toUpperCase();
 
+      // Verificar duplicados solo si es nuevo
       if (!updateData) {
         const { data: existing } = await supabase
-          .from("clientes")
+          .from("empleados")
           .select("identificacion")
           .eq("identificacion", idLimpia)
           .maybeSingle();
 
         if (existing) {
           setIdError(true);
-          toast.error("Ya existe un cliente con esta identificación");
+          toast.error("Ya existe un empleado con esta identificación");
           setSubmitting(false);
           return;
         }
@@ -162,27 +144,25 @@ const ClientesCoreUI = () => {
         identificacion: idLimpia,
         nombre: formData.nombre.trim(),
         telefono: formData.telefono.trim(),
-        email: formData.email.trim().toLowerCase(),
-        direccion: formData.direccion.trim(),
-        user_id: user.id 
+        activo: formData.activo
       };
 
       if (updateData) {
         const { error: err } = await supabase
-          .from("clientes")
+          .from("empleados")
           .update(payload)
           .eq("id", updateData.id);
         if (err) throw err;
-        toast.success("Cliente actualizado");
+        toast.success("Empleado actualizado");
       } else {
-        const { error: err } = await supabase.from("clientes").insert([payload]);
+        const { error: err } = await supabase.from("empleados").insert([payload]);
         if (err) throw err;
-        toast.success("Cliente registrado con éxito");
+        toast.success("Empleado registrado con éxito");
         setCurrentPage(1);
       }
 
       handleCancel();
-      fetchClientes();
+      fetchEmpleados();
     } catch (error) {
       toast.error("Error: " + (error.message || "Error desconocido"));
     } finally {
@@ -191,23 +171,23 @@ const ClientesCoreUI = () => {
   };
 
   const confirmDelete = async () => {
-    if (!clienteToDelete) return;
+    if (!empleadoToDelete) return;
     try {
-      const { error } = await supabase.from("clientes").delete().eq("id", clienteToDelete);
+      const { error } = await supabase.from("empleados").delete().eq("id", empleadoToDelete);
       if (error) throw error;
-      toast.success("Cliente eliminado correctamente");
-      fetchClientes();
+      toast.success("Empleado eliminado");
+      fetchEmpleados();
     } catch (error) {
-      toast.error("No se pudo eliminar: " + error.message);
+      toast.error("Error al eliminar: Es posible que el empleado tenga registros asociados.");
     } finally {
       setModalDeleteVisible(false);
-      setClienteToDelete(null);
+      setEmpleadoToDelete(null);
     }
   };
 
-  const filteredClientes = clientes.filter(c => 
-    c.nombre?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.identificacion?.includes(searchTerm)
+  const filteredEmpleados = empleados.filter(e => 
+    e.nombre?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    e.identificacion?.includes(searchTerm)
   );
 
   const totalPages = Math.ceil(totalRecords / PAGE_SIZE);
@@ -217,8 +197,8 @@ const ClientesCoreUI = () => {
       <CCard className="mb-4 shadow-lg border-0 overflow-hidden w-100" style={{ borderRadius: '16px' }}>
         <CCardHeader className="bg-primary text-white py-3">
           <h2 className="fw-bold text-white d-flex align-items-center m-0 fs-4 text-uppercase">
-            <CIcon icon={cilUser} className="me-2 " />
-            Gestión de Clientes
+            <CIcon icon={cilAddressBook} className="me-2 " />
+            Gestión de Empleados / Vendedores
           </h2>
         </CCardHeader>
       </CCard>
@@ -229,14 +209,14 @@ const ClientesCoreUI = () => {
             <div className="d-flex bg-body-secondary align-items-center rounded-pill px-3 py-1" style={{ width: '400px' }}>
               <CIcon icon={cilSearch} className="text-muted me-2" />
               <CFormInput
-                placeholder="Buscar por nombre o ID..."
+                placeholder="Buscar vendedor..."
                 className="border-0 bg-transparent shadow-none"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
             <CButton color="success" className="text-white rounded-pill px-4" onClick={() => { setUpdateData(null); setModalVisible(true); }}>
-              <CIcon icon={cilPlus} className="me-2" /> Nuevo Cliente
+              <CIcon icon={cilPlus} className="me-2" /> Nuevo Empleado
             </CButton>
           </div>
         </CCardHeader>
@@ -244,30 +224,34 @@ const ClientesCoreUI = () => {
           <CTable hover responsive align="middle" className="mb-0">
             <CTableHead>
               <CTableRow>
-                <CTableHeaderCell className="text-muted small text-uppercase">Identificación</CTableHeaderCell>
+                <CTableHeaderCell className="text-muted small text-uppercase">ID / Cédula</CTableHeaderCell>
                 <CTableHeaderCell className="text-muted small text-uppercase">Nombre</CTableHeaderCell>
-                <CTableHeaderCell className="text-muted small text-uppercase">Contacto</CTableHeaderCell>
+                <CTableHeaderCell className="text-muted small text-uppercase">Estado</CTableHeaderCell>
                 <CTableHeaderCell className="text-end text-muted small text-uppercase">Acciones</CTableHeaderCell>
               </CTableRow>
             </CTableHead>
             <CTableBody>
               {loading ? (
                 <CTableRow><CTableDataCell colSpan="4" className="text-center py-5"><CSpinner color="primary" /></CTableDataCell></CTableRow>
-              ) : filteredClientes.length === 0 ? (
-                <CTableRow><CTableDataCell colSpan="4" className="text-center py-4 text-muted">No se encontraron registros</CTableDataCell></CTableRow>
-              ) : filteredClientes.map((c) => (
-                <CTableRow key={c.id}>
-                  <CTableDataCell className="fw-bold text-uppercase">{c.identificacion}</CTableDataCell>
-                  <CTableDataCell>{c.nombre}</CTableDataCell>
+              ) : filteredEmpleados.length === 0 ? (
+                <CTableRow><CTableDataCell colSpan="4" className="text-center py-4 text-muted">No hay empleados registrados</CTableDataCell></CTableRow>
+              ) : filteredEmpleados.map((e) => (
+                <CTableRow key={e.id}>
+                  <CTableDataCell className="fw-bold text-uppercase">{e.identificacion}</CTableDataCell>
                   <CTableDataCell>
-                    <div className="small">{c.telefono || "-"}</div>
-                    <div className="small text-muted">{c.email || "-"}</div>
+                    <div>{e.nombre}</div>
+                    <div className="small text-muted">{e.telefono || "Sin teléfono"}</div>
+                  </CTableDataCell>
+                  <CTableDataCell>
+                    <CBadge color={e.activo ? 'success' : 'danger'} shape="pill">
+                      {e.activo ? 'Activo' : 'Inactivo'}
+                    </CBadge>
                   </CTableDataCell>
                   <CTableDataCell className="text-end">
-                    <CButton color="info" variant="ghost" size="sm" className="rounded-pill" title="Editar" onClick={() => { setUpdateData(c); setModalVisible(true); }}>
+                    <CButton color="info" variant="ghost" size="sm" className="rounded-pill" onClick={() => { setUpdateData(e); setModalVisible(true); }}>
                       <CIcon icon={cilPencil} />
                     </CButton>
-                    <CButton color="danger" variant="ghost" size="sm" className="rounded-pill ms-2" title="Eliminar" onClick={() => { setClienteToDelete(c.id); setModalDeleteVisible(true); }}>
+                    <CButton color="danger" variant="ghost" size="sm" className="rounded-pill ms-2" onClick={() => { setEmpleadoToDelete(e.id); setModalDeleteVisible(true); }}>
                       <CIcon icon={cilTrash} />
                     </CButton>
                   </CTableDataCell>
@@ -278,34 +262,17 @@ const ClientesCoreUI = () => {
 
           {!loading && totalPages > 1 && (
             <div className="d-flex justify-content-between align-items-center mt-4">
-              <div className="text-muted small">
-                Mostrando {clientes.length} de {totalRecords} registros
-              </div>
+              <div className="text-muted small">Mostrando {empleados.length} empleados</div>
               <CPagination align="end" className="mb-0">
-                <CPaginationItem 
-                  disabled={currentPage === 1} 
-                  onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                  style={{ cursor: 'pointer' }}
-                >
+                <CPaginationItem disabled={currentPage === 1} onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}>
                   <CIcon icon={cilChevronLeft} />
                 </CPaginationItem>
-                
                 {[...Array(totalPages)].map((_, i) => (
-                  <CPaginationItem 
-                    key={i + 1}
-                    active={currentPage === i + 1}
-                    onClick={() => setCurrentPage(i + 1)}
-                    style={{ cursor: 'pointer' }}
-                  >
+                  <CPaginationItem key={i + 1} active={currentPage === i + 1} onClick={() => setCurrentPage(i + 1)}>
                     {i + 1}
                   </CPaginationItem>
                 ))}
-
-                <CPaginationItem 
-                  disabled={currentPage === totalPages} 
-                  onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                  style={{ cursor: 'pointer' }}
-                >
+                <CPaginationItem disabled={currentPage === totalPages} onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}>
                   <CIcon icon={cilChevronRight} />
                 </CPaginationItem>
               </CPagination>
@@ -315,154 +282,82 @@ const ClientesCoreUI = () => {
       </CCard>
 
       {/* MODAL FORMULARIO */}
-      <CModal
-        visible={modalVisible}
-        onClose={handleCancel}
-        size="lg"
-        alignment="center"
-        backdrop="static"
-      >
-        <CForm
-          noValidate
-          validated={validated}
-          onSubmit={handleSubmit}
-          className="overflow-visible"
-        >
+      <CModal visible={modalVisible} onClose={handleCancel} size="lg" alignment="center" backdrop="static">
+        <CForm noValidate validated={validated} onSubmit={handleSubmit}>
           <CModalHeader className="bg-primary text-white border-0 py-3">
             <CModalTitle className="fw-bold text-white m-0 fs-5">
-              {updateData ? 'Editar Cliente' : 'Nuevo Cliente'}
+              {updateData ? 'Editar Empleado' : 'Nuevo Empleado'}
             </CModalTitle>
           </CModalHeader>
-
           <CModalBody className="p-4">
               <CRow className="g-4">
                 <CCol md={6}>
-                  <CFormLabel className="fw-bold text-muted small mb-2 ms-1">Identificación *</CFormLabel>
+                  <CFormLabel className="fw-bold text-muted small mb-2">Identificación *</CFormLabel>
                   <CFormInput
                     name="identificacion"
                     value={formData.identificacion}
                     onChange={handleChange}
                     required
                     disabled={!!updateData}
-                    placeholder="Ej: V-12345678"
+                    placeholder="V-20123456"
                     className="border shadow-sm py-2 px-3"
-                    style={{ borderRadius: '12px', fontSize: '0.95rem' }}
-                    invalid={idError || (validated && !formData.identificacion.trim())}
+                    style={{ borderRadius: '12px' }}
+                    invalid={idError}
                   />
-                  <CFormFeedback invalid>
-                    {idError ? 'Ya existe un cliente con esta identificación.' : 'La identificación es obligatoria.'}
-                  </CFormFeedback>
+                  <CFormFeedback invalid>La identificación es obligatoria o ya existe.</CFormFeedback>
                 </CCol>
-
                 <CCol md={6}>
-                  <CFormLabel className="fw-bold text-muted small mb-2 ms-1">Nombre Completo *</CFormLabel>
+                  <CFormLabel className="fw-bold text-muted small mb-2">Nombre Completo *</CFormLabel>
                   <CFormInput
                     name="nombre"
                     value={formData.nombre}
                     onChange={handleChange}
                     required
-                    placeholder="Juan Pérez"
+                    placeholder="Nombre del Vendedor"
                     className="border shadow-sm py-2 px-3"
-                    style={{ borderRadius: '12px', fontSize: '0.95rem' }}
-                    invalid={validated && !formData.nombre.trim()}
+                    style={{ borderRadius: '12px' }}
                   />
                   <CFormFeedback invalid>El nombre es obligatorio.</CFormFeedback>
                 </CCol>
-
                 <CCol md={6}>
-                  <CFormLabel className="fw-bold text-muted small mb-2 ms-1">Teléfono</CFormLabel>
+                  <CFormLabel className="fw-bold text-muted small mb-2">Teléfono</CFormLabel>
                   <CFormInput
                     name="telefono"
                     value={formData.telefono}
                     onChange={handleChange}
-                    placeholder="+5804147189362"
+                    placeholder="0412-1234567"
                     className="border shadow-sm py-2 px-3"
-                    style={{ borderRadius: '12px', fontSize: '0.95rem' }}
-                  />
-                </CCol>
-
-                <CCol md={6}>
-                  <CFormLabel className="fw-bold text-muted small mb-2 ms-1">Correo Electrónico</CFormLabel>
-                  <CFormInput
-                    type="email"
-                    name="email"
-                    value={formData.email}
-                    onChange={handleChange}
-                    placeholder="usuario@correo.com"
-                    className="border shadow-sm py-2 px-3"
-                    style={{ borderRadius: '12px', fontSize: '0.95rem' }}
-                  />
-                </CCol>
-
-                <CCol md={12}>
-                  <CFormLabel className="fw-bold text-muted small mb-2 ms-1">Dirección</CFormLabel>
-                  <CFormInput
-                    name="direccion"
-                    value={formData.direccion}
-                    onChange={handleChange}
-                    placeholder="Av. Principal, Ciudad, País"
-                    className="border shadow-sm py-2 px-3"
-                    style={{ borderRadius: '12px', fontSize: '0.95rem' }}
+                    style={{ borderRadius: '12px' }}
                   />
                 </CCol>
               </CRow>
           </CModalBody>
-
           <CModalFooter className="border-0 p-4 pt-2 d-flex gap-3 bg-body-secondary">
-            <CButton
-              type="button"
-              color="secondary"
-              variant="ghost"
-              className="flex-grow-1 py-2 fw-bold"
-              style={{ borderRadius: '12px' }}
-              onClick={handleCancel}
-            >
+            <CButton type="button" color="secondary" variant="ghost" className="flex-grow-1 py-2 fw-bold" onClick={handleCancel}>
               Cancelar
             </CButton>
-            <CButton
-              type="submit"
-              color="primary"
-              className="flex-grow-1 py-2 fw-bold text-white shadow-sm"
-              style={{ borderRadius: '12px' }}
-              disabled={submitting}
-            >
-              {submitting ? <CSpinner size="sm" /> : 'Guardar'}
+            <CButton type="submit" color="primary" className="flex-grow-1 py-2 fw-bold text-white" disabled={submitting}>
+              {submitting ? <CSpinner size="sm" /> : 'Guardar Empleado'}
             </CButton>
           </CModalFooter>
         </CForm>
       </CModal>
 
       {/* MODAL ELIMINAR */}
-      <CModal
-        visible={modalDeleteVisible}
-        onClose={() => setModalDeleteVisible(false)}
-        alignment="center"
-        backdrop="static"
-      >
+      <CModal visible={modalDeleteVisible} onClose={() => setModalDeleteVisible(false)} alignment="center">
         <CModalHeader className="bg-primary text-white border-0 py-3">
           <CModalTitle className="fw-bold text-white m-0 fs-5">Confirmar eliminación</CModalTitle>
         </CModalHeader>
         <CModalBody className="text-center p-4">
           <CIcon icon={cilTrash} size="xl" className="text-danger mb-2" />
-          <h6 className="fw-bold mb-1">¿Eliminar cliente?</h6>
-          <p className="text-muted small mb-0">Esta acción es permanente y no podrá revertirse.</p>
+          <h6 className="fw-bold mb-1">¿Eliminar empleado?</h6>
+          <p className="text-muted small mb-0">Esta acción no se puede deshacer.</p>
         </CModalBody>
         <CModalFooter className="border-0 p-4 pt-0 d-flex gap-3 bg-body-secondary">
-          <CButton
-            color="secondary"
-            variant="ghost"
-            className="flex-grow-1 py-2 fw-bold"
-            style={{ borderRadius: '12px' }}
-            onClick={() => setModalDeleteVisible(false)}
-          >
+          <CButton color="secondary" variant="ghost" className="flex-grow-1 py-2 fw-bold" onClick={() => setModalDeleteVisible(false)}>
             Cancelar
           </CButton>
-          <CButton
-            color="danger"
-            className="flex-grow-1 py-2 fw-bold text-white shadow-sm"
-            style={{ borderRadius: '12px' }}
-            onClick={confirmDelete}
-          >
+          <CButton color="danger" className="flex-grow-1 py-2 fw-bold text-white" onClick={confirmDelete}>
             Eliminar
           </CButton>
         </CModalFooter>
@@ -471,4 +366,4 @@ const ClientesCoreUI = () => {
   );
 };
 
-export default ClientesCoreUI;
+export default Empleados;

@@ -10,8 +10,6 @@ import { CIcon } from '@coreui/icons-react';
 import { 
   cilPencil, cilTrash, cilPlus, cilSearch, 
   cilChevronLeft, cilChevronRight, 
-  cilList,
-  cilTag,
   cilTags
 } from '@coreui/icons';
 import { createClient } from "../../../../supabase/client"; 
@@ -20,35 +18,30 @@ import { toast } from "sonner";
 const InventarioProductos = () => {
   const supabase = createClient();
   
-  // Estados de datos
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  
-  // Paginación
   const [currentPage, setCurrentPage] = useState(1);
   const [totalRecords, setTotalRecords] = useState(0);
-  const PAGE_SIZE = 8;
+  const PAGE_SIZE = 7;
 
-  // Estados de UI
   const [modalVisible, setModalVisible] = useState(false);
   const [modalDeleteVisible, setModalDeleteVisible] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
   const [productToDelete, setProductToDelete] = useState(null);
   
-  // Estados de Formulario y Validación
   const [submitting, setSubmitting] = useState(false);
   const [validated, setValidated] = useState(false);
-  const [skuError, setSkuError] = useState(false); // Error de duplicado
+  const [skuError, setSkuError] = useState(false);
 
   const initialFormState = {
     sku: '', nombre: '', marca: '',
     stock_actual: 0, precio_costo: 0,
-    precio_venta: 0, ubicacion: ''
+    precio_venta: 0, precio_credito: 0,
+    ubicacion: ''
   };
   const [formData, setFormData] = useState(initialFormState);
 
-  // 1. Cargar Datos
   const fetchProducts = useCallback(async () => {
     setLoading(true);
     try {
@@ -65,7 +58,7 @@ const InventarioProductos = () => {
       setProducts(data || []);
       setTotalRecords(count || 0);
     } catch (error) {
-      toast.error("Error al cargar inventario: " + error.message);
+      toast.error("Error al cargar: " + error.message);
     } finally {
       setLoading(false);
     }
@@ -75,19 +68,10 @@ const InventarioProductos = () => {
     fetchProducts();
   }, [fetchProducts]);
 
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchTerm]);
-
-  // Manejo de cambios en el form
   const handleChange = (e) => {
-    const { name, value, type } = e.target;
-    if (name === 'sku') setSkuError(false); // Reset error al escribir
-    
-    setFormData(prev => ({
-      ...prev,
-      [name]: type === 'number' ? value : value // Guardamos el valor literal para validación
-    }));
+    const { name, value } = e.target;
+    if (name === 'sku') setSkuError(false);
+    setFormData(prev => ({ ...prev, [name]: value }));
   };
 
   const handleCancel = () => {
@@ -98,27 +82,12 @@ const InventarioProductos = () => {
     setSkuError(false);
   };
 
-  // --- VALIDACIONES LÓGICAS ---
-  const validateForm = () => {
-    if (!formData.sku.trim()) return false;
-    if (!formData.nombre.trim()) return false;
-    if (Number(formData.stock_actual) < 0) {
-      toast.warning("El stock no puede ser negativo");
-      return false;
-    }
-    if (Number(formData.precio_costo) < 0 || Number(formData.precio_venta) < 0) {
-      toast.warning("Los precios no pueden ser negativos");
-      return false;
-    }
-    return true;
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     const form = e.currentTarget;
     setValidated(true);
 
-    if (form.checkValidity() === false || !validateForm()) {
+    if (form.checkValidity() === false) {
       e.stopPropagation();
       return;
     }
@@ -128,7 +97,6 @@ const InventarioProductos = () => {
       const { data: { user } } = await supabase.auth.getUser();
       const skuLimpio = formData.sku.trim().toUpperCase();
 
-      // VALIDACIÓN DE SKU DUPLICADO (Solo para nuevos)
       if (!editingProduct) {
         const { data: existing } = await supabase
           .from("productos")
@@ -138,7 +106,6 @@ const InventarioProductos = () => {
 
         if (existing) {
           setSkuError(true);
-          toast.error("Ya existe un producto con este SKU");
           setSubmitting(false);
           return;
         }
@@ -147,11 +114,10 @@ const InventarioProductos = () => {
       const payload = { 
         ...formData,
         sku: skuLimpio,
-        nombre: formData.nombre.trim(),
-        marca: formData.marca.trim(),
         stock_actual: parseInt(formData.stock_actual) || 0,
         precio_costo: parseFloat(formData.precio_costo) || 0,
         precio_venta: parseFloat(formData.precio_venta) || 0,
+        precio_credito: parseFloat(formData.precio_credito) || 0,
         user_id: user?.id 
       };
 
@@ -161,8 +127,7 @@ const InventarioProductos = () => {
 
       if (error) throw error;
 
-      toast.success(editingProduct ? "Producto actualizado" : "Producto registrado");
-      if (!editingProduct) setCurrentPage(1);
+      toast.success("Operación exitosa");
       fetchProducts();
       handleCancel();
     } catch (error) {
@@ -176,13 +141,12 @@ const InventarioProductos = () => {
     try {
       const { error } = await supabase.from("productos").delete().eq("id", productToDelete.id);
       if (error) throw error;
-      toast.success("Producto eliminado");
+      toast.success("Eliminado");
       fetchProducts();
     } catch (error) {
       toast.error("Error al eliminar");
     } finally {
       setModalDeleteVisible(false);
-      setProductToDelete(null);
     }
   };
 
@@ -195,97 +159,119 @@ const InventarioProductos = () => {
 
   return (
     <CContainer>
-      {/* Cabecera */}
       <CCard className="mb-4 shadow-lg border-0 overflow-hidden w-100" style={{ borderRadius: '16px' }}>
         <CCardHeader className="bg-primary text-white py-3">
           <h2 className="fw-bold text-white d-flex align-items-center m-0 fs-4 text-uppercase">
-            <CIcon icon={cilTags} className="me-2 " />
-            Inventario de Productos
+            <CIcon icon={cilTags} className="me-2" /> Inventario de Productos
           </h2>
         </CCardHeader>
       </CCard>
 
-      {/* Buscador y Tabla */}
       <CCard className="mb-4 shadow-lg border-0" style={{ borderRadius: '16px' }}>
         <CCardHeader className="py-3 border-bottom-0">
           <div className="d-flex justify-content-between align-items-center">
-            <div className="d-flex align-items-center rounded-pill px-3 py-1" style={{ width: '400px' }}>
+            <div className="d-flex bg-body-secondary align-items-center rounded-pill px-3 py-1" style={{ width: '400px' }}>
               <CIcon icon={cilSearch} className="text-muted me-2" />
               <CFormInput 
-                placeholder="Buscar por SKU o nombre..." 
+                placeholder="Buscar por sku o nombre..." 
                 className="border-0 bg-transparent shadow-none"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
-            <CButton color="success" className="text-white rounded-pill px-4" onClick={() => { setEditingProduct(null); setModalVisible(true); }}>
+            <CButton color="success" className="text-white rounded-pill px-4" onClick={() => { setEditingProduct(null); setFormData(initialFormState); setModalVisible(true); }}>
               <CIcon icon={cilPlus} className="me-2" /> Nuevo Producto
             </CButton>
           </div>
         </CCardHeader>
 
         <CCardBody className="px-4">
-          <CTable hover responsive align="middle" className="mb-0">
+          <CTable hover responsive align="middle" className="mb-0" style={{ tableLayout: 'fixed' }}>
             <CTableHead>
               <CTableRow>
-                <CTableHeaderCell className="text-muted small text-uppercase">SKU</CTableHeaderCell>
-                <CTableHeaderCell className="text-muted small text-uppercase">Producto</CTableHeaderCell>
-                <CTableHeaderCell className="text-muted small text-uppercase text-center">Stock</CTableHeaderCell>
-                <CTableHeaderCell className="text-muted small text-uppercase">Precio Venta</CTableHeaderCell>
-                <CTableHeaderCell className="text-muted small text-uppercase">Precio Compra</CTableHeaderCell>
-                <CTableHeaderCell className="text-end text-muted small text-uppercase">Acciones</CTableHeaderCell>
+                <CTableHeaderCell className="text-muted small text-uppercase" style={{ width: '15%' }}>SKU</CTableHeaderCell>
+                <CTableHeaderCell className="text-muted small text-uppercase" style={{ width: '30%' }}>Producto</CTableHeaderCell>
+                <CTableHeaderCell className="text-muted small text-uppercase text-center" style={{ width: '10%' }}>Stock</CTableHeaderCell>
+                <CTableHeaderCell className="text-muted small text-uppercase" style={{ width: '15%' }}>P. Contado</CTableHeaderCell>
+                <CTableHeaderCell className="text-muted small text-uppercase" style={{ width: '15%' }}>P. Crédito</CTableHeaderCell>
+                <CTableHeaderCell className="text-end text-muted small text-uppercase" style={{ width: '15%' }}>Costo</CTableHeaderCell>
+                <CTableHeaderCell className="text-end text-muted small text-uppercase" style={{ width: '15%' }}>Acciones</CTableHeaderCell>
               </CTableRow>
             </CTableHead>
             <CTableBody>
               {loading ? (
-                <CTableRow><CTableDataCell colSpan="5" className="text-center py-5"><CSpinner color="primary" /></CTableDataCell></CTableRow>
-              ) : filteredProducts.length === 0 ? (
-                <CTableRow><CTableDataCell colSpan="5" className="text-center py-4 text-muted">No se encontraron registros</CTableDataCell></CTableRow>
-              ) : filteredProducts.map((p) => (
+                <CTableRow><CTableDataCell colSpan="7" className="text-center py-5"><CSpinner color="primary" /></CTableDataCell></CTableRow>
+                ) : filteredProducts.length === 0 ? (
+                <CTableRow><CTableDataCell colSpan="7" className="text-center py-4 text-muted">No se encontraron productos</CTableDataCell></CTableRow>
+                ) : filteredProducts.map((p) => (
                 <CTableRow key={p.id}>
-                  <CTableDataCell className="fw-bold text-muted">{p.sku}</CTableDataCell>
+                  <CTableDataCell className="fw-bold text-muted text-truncate">{p.sku}</CTableDataCell>
                   <CTableDataCell>
-                    <div className="fw-bold text-dark text-uppercase">{p.nombre}</div>
-                    <div className="small text-muted">{p.marca || "Sin marca"}</div>
+                    <div className="fw-bold text-uppercase" title={p.nombre} style={{ maxWidth: '100%' }}>
+                      {p.nombre}
+                    </div>
+                    <div className="small text-muted text-truncate">{p.marca || "Sin marca"}</div>
                   </CTableDataCell>
                   <CTableDataCell className="text-center">
-                    <CBadge color={p.stock_actual <= 5 ? 'danger' : 'success'} shape="rounded-pill" className="px-3">
+                    <CBadge color={p.stock_actual <= 5 ? 'danger' : 'success'} shape="rounded-pill">
                       {p.stock_actual}
                     </CBadge>
                   </CTableDataCell>
-                  <CTableDataCell className="fw-bold text-primary">
+                  <CTableDataCell className="fw-bold text-success">
                     ${p.precio_venta?.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                   </CTableDataCell>
-                  <CTableDataCell className="fw-bold text-primary">
-                    ${p.precio_costo?.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                  <CTableDataCell className="fw-bold text-warning">
+                    ${p.precio_credito?.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                   </CTableDataCell>
+                 <CTableDataCell>
+                    <div className="d-flex justify-content-end fw-bold">
+                      ${p.precio_costo?.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    </div>
+                 </CTableDataCell>
                   <CTableDataCell className="text-end">
-                    <CButton color="info" variant="ghost" size="sm" className="rounded-pill" onClick={() => { setEditingProduct(p); setFormData(p); setModalVisible(true); }}>
-                      <CIcon icon={cilPencil} />
-                    </CButton>
-                    <CButton color="danger" variant="ghost" size="sm" className="rounded-pill ms-2" onClick={() => { setProductToDelete(p); setModalDeleteVisible(true); }}>
-                      <CIcon icon={cilTrash} />
-                    </CButton>
+                    <div className="d-flex justify-content-end">
+                      <CButton color="info" variant="ghost" size="sm" onClick={() => { setEditingProduct(p); setFormData(p); setModalVisible(true); }}>
+                        <CIcon icon={cilPencil} />
+                      </CButton>
+                      <CButton color="danger" variant="ghost" size="sm" onClick={() => { setProductToDelete(p); setModalDeleteVisible(true); }}>
+                        <CIcon icon={cilTrash} />
+                      </CButton>
+                    </div>
                   </CTableDataCell>
                 </CTableRow>
               ))}
             </CTableBody>
           </CTable>
-          
-          {/* Paginación */}
+
+          {/* Bloque de Paginación Agregado */}
           {!loading && totalPages > 1 && (
             <div className="d-flex justify-content-between align-items-center mt-4">
-              <div className="text-muted small">Mostrando {products.length} de {totalRecords}</div>
+              <div className="text-muted small">
+                Mostrando {products.length} de {totalRecords} productos
+              </div>
               <CPagination align="end" className="mb-0">
-                <CPaginationItem disabled={currentPage === 1} onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} style={{ cursor: 'pointer' }}>
+                <CPaginationItem 
+                  disabled={currentPage === 1} 
+                  onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                  style={{ cursor: 'pointer' }}
+                >
                   <CIcon icon={cilChevronLeft} />
                 </CPaginationItem>
                 {[...Array(totalPages)].map((_, i) => (
-                  <CPaginationItem key={i + 1} active={currentPage === i + 1} onClick={() => setCurrentPage(i + 1)} style={{ cursor: 'pointer' }}>
+                  <CPaginationItem
+                    key={i + 1}
+                    active={currentPage === i + 1}
+                    onClick={() => setCurrentPage(i + 1)}
+                    style={{ cursor: 'pointer' }}
+                  >
                     {i + 1}
                   </CPaginationItem>
                 ))}
-                <CPaginationItem disabled={currentPage === totalPages} onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} style={{ cursor: 'pointer' }}>
+                <CPaginationItem 
+                  disabled={currentPage === totalPages} 
+                  onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                  style={{ cursor: 'pointer' }}
+                >
                   <CIcon icon={cilChevronRight} />
                 </CPaginationItem>
               </CPagination>
@@ -294,138 +280,128 @@ const InventarioProductos = () => {
         </CCardBody>
       </CCard>
 
-      {/* MODAL FORMULARIO */}
-      <CModal visible={modalVisible} onClose={handleCancel} size="lg" alignment="center" backdrop="static">
+      <CModal visible={modalVisible} onClose={handleCancel} size="lg" alignment='center' backdrop="static">
         <CForm noValidate validated={validated} onSubmit={handleSubmit}>
-          <CModalHeader className="bg-primary text-white border-0 py-3">
-            <CModalTitle className="fw-bold text-white m-0 fs-5">
-              {editingProduct ? 'Editar Producto' : 'Nuevo Producto'}
-            </CModalTitle>
-          </CModalHeader>
-
+          <CModalHeader className="bg-primary text-white"><CModalTitle>{editingProduct ? 'Editar' : 'Nuevo'} Producto</CModalTitle></CModalHeader>
           <CModalBody className="p-4">
-            <CRow className="g-4">
-              <CCol md={6}>
-                <CFormLabel className="fw-bold text-muted small mb-2 ms-1">SKU / Código *</CFormLabel>
-                <CFormInput
-                  name="sku"
-                  value={formData.sku}
-                  onChange={handleChange}
-                  required
-                  disabled={!!editingProduct}
-                  placeholder="Ej: BUJ-001"
-                  className="border shadow-sm py-2 px-3"
-                  style={{ borderRadius: '12px' }}
-                  invalid={skuError || (validated && !formData.sku.trim())}
-                />
-                <CFormFeedback invalid>
-                  {skuError ? 'Este SKU ya está registrado.' : 'El SKU es obligatorio.'}
-                </CFormFeedback>
-              </CCol>
-
-              <CCol md={6}>
-                <CFormLabel className="fw-bold text-muted small mb-2 ms-1">Marca</CFormLabel>
-                <CFormInput
-                  name="marca"
-                  value={formData.marca}
-                  onChange={handleChange}
-                  placeholder="Ej: Toyota"
-                  className="border shadow-sm py-2 px-3"
-                  style={{ borderRadius: '12px' }}
-                />
-              </CCol>
-
-              <CCol md={12}>
-                <CFormLabel className="fw-bold text-muted small mb-2 ms-1">Nombre del Producto *</CFormLabel>
-                <CFormInput
-                  name="nombre"
-                  value={formData.nombre}
-                  onChange={handleChange}
-                  required
-                  placeholder="Ej: Kit de Embrague"
-                  className="border shadow-sm py-2 px-3"
-                  style={{ borderRadius: '12px' }}
-                  invalid={validated && !formData.nombre.trim()}
-                />
-                <CFormFeedback invalid>El nombre es obligatorio.</CFormFeedback>
-              </CCol>
-
-              <CCol md={4}>
-                <CFormLabel className="fw-bold text-muted small mb-2 ms-1">Stock Actual</CFormLabel>
-                <CFormInput
-                  type="number"
-                  name="stock_actual"
-                  value={formData.stock_actual}
-                  onChange={handleChange}
-                  className="border shadow-sm py-2 px-3"
-                  style={{ borderRadius: '12px' }}
-                  invalid={validated && formData.stock_actual < 0}
-                />
-                <CFormFeedback invalid>No puede ser negativo.</CFormFeedback>
-              </CCol>
-
-              <CCol md={4}>
-                <CFormLabel className="fw-bold text-muted small mb-2 ms-1">Costo (USD)</CFormLabel>
-                <CFormInput
-                  type="number"
-                  step="0.01"
-                  name="precio_costo"
-                  value={formData.precio_costo}
-                  onChange={handleChange}
-                  className="border shadow-sm py-2 px-3"
-                  style={{ borderRadius: '12px' }}
-                  invalid={validated && formData.precio_costo < 0}
-                />
-                <CFormFeedback invalid>No puede ser negativo.</CFormFeedback>
-              </CCol>
-
-              <CCol md={4}>
-                <CFormLabel className="fw-bold text-muted small mb-2 ms-1">Venta (USD)</CFormLabel>
-                <CFormInput
-                  type="number"
-                  step="0.01"
-                  name="precio_venta"
-                  value={formData.precio_venta}
-                  onChange={handleChange}
-                  className="border shadow-sm py-2 px-3"
-                  style={{ borderRadius: '12px' }}
-                  invalid={validated && formData.precio_venta < 0}
-                />
-                <CFormFeedback invalid>No puede ser negativo.</CFormFeedback>
-              </CCol>
-            </CRow>
+            <CRow className="g-3">
+  <CCol md={6}>
+    <CFormLabel className="small fw-bold">SKU *</CFormLabel>
+    <CFormInput 
+      name="sku" 
+      value={formData.sku} 
+      onChange={handleChange} 
+      required 
+      disabled={!!editingProduct} 
+      invalid={skuError} 
+      placeholder="Ej: AB-1234"
+    />
+  </CCol>
+  <CCol md={6}>
+    <CFormLabel className="small fw-bold">Marca</CFormLabel>
+    <CFormInput 
+      name="marca" 
+      value={formData.marca} 
+      onChange={handleChange} 
+      placeholder="Ej: Toyota, Bosch..."
+    />
+  </CCol>
+  <CCol md={12}>
+    <CFormLabel className="small fw-bold">Nombre *</CFormLabel>
+    <CFormInput 
+      name="nombre" 
+      value={formData.nombre} 
+      onChange={handleChange} 
+      required 
+      placeholder="Nombre descriptivo del producto"
+    />
+  </CCol>
+  <CCol md={3}>
+    <CFormLabel className="small fw-bold">Stock</CFormLabel>
+    <CFormInput 
+      type="number" 
+      name="stock_actual" 
+      value={formData.stock_actual} 
+      onChange={handleChange} 
+      placeholder="0"
+    />
+  </CCol>
+  <CCol md={3}>
+    <CFormLabel className="small fw-bold">Costo</CFormLabel>
+    <CFormInput 
+      type="number" 
+      step="0.01" 
+      name="precio_costo" 
+      value={formData.precio_costo} 
+      onChange={handleChange} 
+      placeholder="0.00"
+    />
+  </CCol>
+  <CCol md={3}>
+    <CFormLabel className="small fw-bold text-success">P. Contado</CFormLabel>
+    <CFormInput 
+      type="number" 
+      step="0.01" 
+      name="precio_venta" 
+      value={formData.precio_venta} 
+      onChange={handleChange} 
+      placeholder="0.00"
+    />
+  </CCol>
+  <CCol md={3}>
+    <CFormLabel className="small fw-bold text-warning">P. Crédito</CFormLabel>
+    <CFormInput 
+      type="number" 
+      step="0.01" 
+      name="precio_credito" 
+      value={formData.precio_credito} 
+      onChange={handleChange} 
+      placeholder="0.00"
+    />
+  </CCol>
+</CRow>
           </CModalBody>
-
-          <CModalFooter className="border-0 p-4 pt-2 d-flex gap-3 bg-light">
-            <CButton type="button" color="secondary" variant="ghost" className="flex-grow-1 py-2 fw-bold" style={{ borderRadius: '12px' }} onClick={handleCancel}>
-              Cancelar
-            </CButton>
-            <CButton type="submit" color="primary" className="flex-grow-1 py-2 fw-bold text-white shadow-sm" style={{ borderRadius: '12px' }} disabled={submitting}>
-              {submitting ? <CSpinner size="sm" /> : 'Guardar'}
-            </CButton>
+          <CModalFooter>
+            <CButton color="secondary" onClick={handleCancel}>Cancelar</CButton>
+            <CButton type="submit" color="primary" disabled={submitting}>Guardar</CButton>
           </CModalFooter>
         </CForm>
       </CModal>
 
-      {/* MODAL ELIMINAR */}
-      <CModal visible={modalDeleteVisible} onClose={() => setModalDeleteVisible(false)} alignment="center">
-        <CModalHeader className="bg-primary text-white border-0 py-3">
-          <CModalTitle className="fw-bold text-white m-0 fs-5">Confirmar eliminación</CModalTitle>
-        </CModalHeader>
-        <CModalBody className="text-center p-4">
-          <CIcon icon={cilTrash} size="xl" className="text-danger mb-2" />
-          <h6 className="fw-bold mb-1">¿Eliminar "{productToDelete?.nombre}"?</h6>
-          <p className="text-muted small mb-0">Esta acción no se puede deshacer.</p>
-        </CModalBody>
-        <CModalFooter className="border-0 p-4 pt-0 d-flex gap-3 bg-light">
-          <CButton color="secondary" variant="ghost" className="flex-grow-1 py-2 fw-bold" style={{ borderRadius: '12px' }} onClick={() => setModalDeleteVisible(false)}>
-            Cancelar
-          </CButton>
-          <CButton color="danger" className="flex-grow-1 py-2 fw-bold text-white shadow-sm" style={{ borderRadius: '12px' }} onClick={confirmDelete}>
-            Eliminar
-          </CButton>
-        </CModalFooter>
-      </CModal>
+      <CModal
+              visible={modalDeleteVisible}
+              onClose={() => setModalDeleteVisible(false)}
+              alignment="center"
+              backdrop="static"
+            >
+              <CModalHeader className="bg-primary text-white border-0 py-3">
+                <CModalTitle className="fw-bold text-white m-0 fs-5">Confirmar eliminación</CModalTitle>
+              </CModalHeader>
+              <CModalBody className="text-center p-4">
+                <CIcon icon={cilTrash} size="xl" className="text-danger mb-2" />
+                <h6 className="fw-bold mb-1">¿Eliminar cliente?</h6>
+                <p className="text-muted small mb-0">Esta acción es permanente y no podrá revertirse.</p>
+              </CModalBody>
+              <CModalFooter className="border-0 p-4 pt-0 d-flex gap-3 bg-body-secondary">
+                <CButton
+                  color="secondary"
+                  variant="ghost"
+                  className="flex-grow-1 py-2 fw-bold"
+                  style={{ borderRadius: '12px' }}
+                  onClick={() => setModalDeleteVisible(false)}
+                >
+                  Cancelar
+                </CButton>
+                <CButton
+                  color="danger"
+                  className="flex-grow-1 py-2 fw-bold text-white shadow-sm"
+                  style={{ borderRadius: '12px' }}
+                  onClick={confirmDelete}
+                >
+                  Eliminar
+                </CButton>
+              </CModalFooter>
+            </CModal>
     </CContainer>
   );
 };

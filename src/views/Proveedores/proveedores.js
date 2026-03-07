@@ -172,7 +172,7 @@ const ProveedoresCoreUI = () => {
       <CCard className="mb-4 shadow-lg border-0" style={{ borderRadius: '16px' }}>
         <CCardHeader className="py-3 border-bottom-0">
           <div className="d-flex justify-content-between align-items-center">
-            <div className="d-flex align-items-center rounded-pill px-3 py-1" style={{ width: '400px' }}>
+            <div className="d-flex bg-body-secondary align-items-center rounded-pill px-3 py-1" style={{ width: '400px' }}>
               <CIcon icon={cilSearch} className="text-muted me-2" />
               <CFormInput
                 placeholder="Buscar por nombre o correo..."
@@ -208,7 +208,7 @@ const ProveedoresCoreUI = () => {
               ) : filteredProveedores.map((prov) => (
                 <CTableRow key={prov.id}>
                   <CTableDataCell>
-                    <div className="fw-bold text-dark text-uppercase small">{prov.nombre}</div>
+                    <div className="fw-bold text-body text-uppercase small">{prov.nombre}</div>
                     <div className="small text-muted">{prov.email ?? "Sin correo registrado"}</div>
                   </CTableDataCell>
                   <CTableDataCell className="small">{prov.telefono ?? "-"}</CTableDataCell>
@@ -333,7 +333,7 @@ const ProveedoresCoreUI = () => {
               </CRow>
           </CModalBody>
 
-          <CModalFooter className="border-0 p-4 pt-0 d-flex gap-3 bg-light">
+          <CModalFooter className="border-0 p-4 pt-0 d-flex gap-3 bg-body-secondary">
             <CButton
               type="button"
               color="secondary"
@@ -372,7 +372,7 @@ const ProveedoresCoreUI = () => {
           <h6 className="fw-bold mb-1">¿Eliminar proveedor?</h6>
           <p className="text-muted small mb-0">Esta acción es permanente y no podrá revertirse.</p>
         </CModalBody>
-        <CModalFooter className="border-0 p-4 pt-0 d-flex gap-3 bg-light">
+        <CModalFooter className="border-0 p-4 pt-0 d-flex gap-3 bg-body-secondary">
           <CButton
             color="secondary"
             variant="ghost"

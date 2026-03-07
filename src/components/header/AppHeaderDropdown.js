@@ -1,7 +1,6 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import {
   CAvatar,
-  CBadge,
   CDropdown,
   CDropdownDivider,
   CDropdownHeader,
@@ -10,14 +9,7 @@ import {
   CDropdownToggle,
 } from '@coreui/react'
 import {
-  cilBell,
-  cilCreditCard,
-  cilCommentSquare,
-  cilEnvelopeOpen,
-  cilFile,
   cilExitToApp,
-  cilSettings,
-  cilTask,
   cilUser,
 } from '@coreui/icons'
 import CIcon from '@coreui/icons-react'
@@ -28,16 +20,26 @@ import { createClient } from '../../../supabase/client';
 const AppHeaderDropdown = () => {
   const navigate = useNavigate();
   const supabase = createClient();
+  const [userEmail, setUserEmail] = useState('Cargando...');
 
-  const handleLogout = async () => {
+  useEffect(() => {
+    const getUserData = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setUserEmail(user.email);
+      }
+    };
+
+    getUserData();
+  }, [supabase]);
+
+  const handleLogout = async (e) => {
+    e.preventDefault(); // Evita que el href="#" recargue la página
     try {
-      // Cerrar sesión en Supabase
       await supabase.auth.signOut();
-      // Redirigir al login
       navigate('/login');
     } catch (error) {
       console.error('Error al cerrar sesión:', error);
-      // Redirigir al login incluso si hay error
       navigate('/login');
     }
   };
@@ -48,9 +50,17 @@ const AppHeaderDropdown = () => {
         <CAvatar src={avatar8} size="md" />
       </CDropdownToggle>
       <CDropdownMenu className="pt-0" placement="bottom-end">
-      <CDropdownHeader className="bg-body-secondary fw-semibold mb-2">Cuenta</CDropdownHeader>
+        <CDropdownHeader className="bg-body-secondary fw-semibold py-2">Cuenta</CDropdownHeader>
+        
+        {/* Información del usuario */}
+        <CDropdownItem className="py-2" disabled>
+          <CIcon icon={cilUser} className="me-2" />
+          <span className="small text-muted">{userEmail}</span>
+        </CDropdownItem>
+
         <CDropdownDivider />
-        <CDropdownItem onClick={handleLogout} href="#">
+        
+        <CDropdownItem onClick={handleLogout} href="#" className="text-danger">
           <CIcon icon={cilExitToApp} className="me-2" />
           Salir
         </CDropdownItem>
@@ -60,4 +70,3 @@ const AppHeaderDropdown = () => {
 }
 
 export default AppHeaderDropdown;
-

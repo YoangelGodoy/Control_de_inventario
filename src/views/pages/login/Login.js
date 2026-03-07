@@ -1,11 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import {
-  CContainer, CRow, CCol, CCard, CCardBody,
+  CContainer, CRow, CCol, CCard,
   CForm, CFormInput, CButton, CSpinner, CFormFeedback, CAlert
 } from '@coreui/react'
 import { createClient } from "../../../../supabase/client"
 import { toast } from "sonner"
 import { useLocation, useNavigate, Link } from "react-router-dom"
+
+// --- IMPORTACIÓN DEL LOGO (Igual que en AppSidebar) ---
+import logo from 'src/assets/images/logo_parts2.png';
 
 const supabase = createClient()
 
@@ -53,7 +56,6 @@ const Login = () => {
   // Validaciones
   const validateField = (name, value) => {
     let error = ''
-    
     switch (name) {
       case 'email':
         if (!value.trim()) {
@@ -62,7 +64,6 @@ const Login = () => {
           error = 'Ingresa un correo electrónico válido'
         }
         break
-        
       case 'password':
         if (!value) {
           error = 'La contraseña es requerida'
@@ -70,18 +71,15 @@ const Login = () => {
           error = 'La contraseña debe tener al menos 6 caracteres'
         }
         break
-        
       default:
         break
     }
-    
     return error
   }
 
   const validateForm = () => {
     const newErrors = {}
     let isValid = true
-    
     Object.keys(credentials).forEach(field => {
       const error = validateField(field, credentials[field])
       if (error) {
@@ -89,20 +87,15 @@ const Login = () => {
         isValid = false
       }
     })
-    
     setErrors(newErrors)
     return isValid
   }
 
-  // Verificar si el usuario ya está autenticado
   useEffect(() => {
     let cancelled = false
-
     const checkAuth = async () => {
       try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession()
+        const { data: { session } } = await supabase.auth.getSession()
         if (session) {
           navigate(redirectTo, { replace: true })
         }
@@ -112,17 +105,13 @@ const Login = () => {
         if (!cancelled) setIsCheckingAuth(false)
       }
     }
-
     checkAuth()
-    return () => {
-      cancelled = true
-    }
+    return () => { cancelled = true }
   }, [navigate, redirectTo])
 
-  // Mostrar spinner mientras verifica autenticación
   if (isCheckingAuth) {
     return (
-      <CContainer className="min-vh-100 d-flex align-items-center justify-content-center">
+      <CContainer className="min-vh-100 d-flex align-items-center justify-content-center bg-body">
         <CSpinner color="primary" />
       </CContainer>
     )
@@ -131,7 +120,6 @@ const Login = () => {
   const handleChange = (e) => {
     const { name, value } = e.target
     setCredentials(prev => ({ ...prev, [name]: value }))
-    
     if (touched[name]) {
       const error = validateField(name, value)
       setErrors(prev => ({ ...prev, [name]: error }))
@@ -141,14 +129,12 @@ const Login = () => {
   const handleBlur = (e) => {
     const { name, value } = e.target
     setTouched(prev => ({ ...prev, [name]: true }))
-
     if (name === 'email') {
       const trimmed = value.trim()
       if (trimmed !== value) {
         setCredentials(prev => ({ ...prev, email: trimmed }))
       }
     }
-
     const error = validateField(name, value)
     setErrors(prev => ({ ...prev, [name]: error }))
   }
@@ -156,30 +142,24 @@ const Login = () => {
   const handleLogin = async (e) => {
     e.preventDefault()
     if (loading) return
-    
     setTouched({ email: true, password: true })
     setFormError('')
-    
     if (!validateForm()) {
       toast.error('Por favor, corrige los errores antes de continuar')
       return
     }
-
     setLoading(true)
-
     try {
-      const email = credentials.email.trim()
-      const password = credentials.password
-
-      const { error } = await supabase.auth.signInWithPassword({ email, password })
-
+      const { error } = await supabase.auth.signInWithPassword({
+        email: credentials.email.trim(),
+        password: credentials.password
+      })
       if (error) {
         const friendly = getFriendlyAuthError(error)
         setFormError(friendly)
         toast.error(friendly)
         return
       }
-
       toast.success("¡Bienvenido de nuevo!")
       navigate(redirectTo, { replace: true })
     } catch (error) {
@@ -192,17 +172,16 @@ const Login = () => {
   }
 
   return (
-    <CContainer className="min-vh-100 d-flex align-items-center justify-content-center py-5">
-      {/* Tarjeta principal más ancha con bordes redondeados y sin desbordamiento */}
-      <CCard className="shadow-lg border-0 overflow-hidden w-100" style={{ borderRadius: '20px', maxWidth: '900px' }}>
-        <CRow className="g-0"> {/* g-0 elimina el padding entre columnas */}
+    <CContainer fluid className="min-vh-100 d-flex align-items-center justify-content-center py-5 bg-body-tertiary">
+      <CCard className="shadow-lg border-0 overflow-hidden w-100 bg-body" style={{ borderRadius: '20px', maxWidth: '950px' }}>
+        <CRow className="g-0">
           
-          {/* LADO IZQUIERDO: Formulario de Login */}
-          <CCol md={6} className="p-4 p-md-5 bg-white d-flex flex-column justify-content-center">
+          {/* LADO IZQUIERDO: Formulario */}
+          <CCol md={6} className="p-4 p-md-5 d-flex flex-column justify-content-center text-body">
             
-            <div className="text-center mb-3">
-              <h3 className="fw-bold text-primary">LOGIN</h3>
-              <p className="text-muted small">Ingresa tus credenciales para continuar</p>
+            <div className="text-center mb-4">
+              <h3 className="fw-bold text-primary">INICIAR SESIÓN</h3>
+              <p className="text-body-secondary small">Gestiona tu inventario AutoParts</p>
             </div>
 
             <CForm onSubmit={handleLogin} noValidate>
@@ -217,9 +196,8 @@ const Login = () => {
                   onChange={handleChange}
                   onBlur={handleBlur}
                   autoComplete="username"
-                  inputMode="email"
                   invalid={touched.email && !!errors.email}
-                  className="bg-light border-0" // Estilo más suave similar al diseño
+                  className="bg-body-secondary border-0 py-2" 
                 />
                 <CFormFeedback invalid>{errors.email}</CFormFeedback>
               </div>
@@ -231,58 +209,64 @@ const Login = () => {
                   label="Contraseña"
                   placeholder="••••••••"
                   required
-                  minLength={6}
                   value={credentials.password}
                   onChange={handleChange}
                   onBlur={handleBlur}
                   autoComplete="current-password"
                   invalid={touched.password && !!errors.password}
-                  className="bg-light border-0" // Estilo más suave similar al diseño
+                  className="bg-body-secondary border-0 py-2" 
                 />
                 <CFormFeedback invalid>{errors.password}</CFormFeedback>
               </div>
 
               {formError && (
-                <CAlert color="danger" className="mb-3">
+                <CAlert color="danger" className="py-2 small">
                   {formError}
                 </CAlert>
               )}
 
-              <div className="d-grid mb-3 mt-4">
+              <div className="d-grid gap-2 mt-4">
                 <CButton 
                   type="submit" 
                   color="primary" 
                   disabled={loading}
-                  style={{ borderRadius: '10px' }} // Botón redondeado
+                  size="lg"
+                  className="shadow-sm border-0"
+                  style={{ borderRadius: '12px', fontWeight: '600' }}
                 >
-                  {loading ? (
-                    <>
-                      <CSpinner size="sm" className="me-2" /> Conectando...
-                    </>
-                  ) : (
-                    "Login"
-                  )}
+                  {loading ? <CSpinner size="sm" /> : "Ingresar"}
                 </CButton>
               </div>
 
-              <div className="text-center mt-4">
-                <small className="text-muted">
-                  ¿No tienes una cuenta? <Link to="/register" className="text-decoration-none fw-bold">Regístrate aquí</Link>
+              <div className="text-center mt-4 text-body-secondary">
+                <small>
+                  ¿No tienes cuenta? <Link to="/register" className="text-primary fw-bold text-decoration-none">Regístrate</Link>
                 </small>
               </div>
             </CForm>
           </CCol>
 
-          {/* LADO DERECHO: Imagen y Fondo */}
-          {/* d-none oculta esto en móviles, d-md-flex lo muestra en pantallas medianas o más */}
-          <CCol md={6} className="d-none d-md-flex bg-primary align-items-center justify-content-center p-5">
-            <div className="text-center text-white">
-              {/* Reemplaza el src con la ruta de tu imagen de la chica con la tablet */}
+          {/* LADO DERECHO: Visual */}
+          {/* LADO DERECHO: Visual */}
+          <CCol md={6} className="d-none d-md-flex bg-primary align-items-center justify-content-center p-5 position-relative">
+            <div className="position-absolute top-0 start-0 w-100 h-100 overflow-hidden" style={{ opacity: 0.1 }}>
+                <div className="bg-white rounded-circle position-absolute" style={{ width: '300px', height: '300px', top: '-100px', left: '-100px' }}></div>
+            </div>
+            
+            <div className="text-center text-white position-relative w-100">
+              
+              {/* --- LOGO MÁS GRANDE --- */}
               <img 
-                src="https://via.placeholder.com/400x500/8A2BE2/FFFFFF?text=Tu+Imagen+Aqui" 
-                alt="Login Illustration" 
-                className="img-fluid"
-                style={{ borderRadius: '16px', maxHeight: '450px', objectFit: 'cover' }}
+                src={logo} 
+                alt="Logo AutoParts" 
+                className="img-fluid mb-4"
+                style={{ 
+                  width: '100%',        // Ocupa el ancho disponible
+                  maxWidth: '280px',    // Pero no más de 280px para que no se pixele
+                  height: 'auto',       // Mantiene la proporción
+                  objectFit: 'contain',
+                  marginTop: '40px'
+                }} 
               />
             </div>
           </CCol>

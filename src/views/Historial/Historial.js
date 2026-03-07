@@ -46,7 +46,7 @@ const HistorialStock = () => {
   // --- NUEVOS ESTADOS DE PAGINACIÓN ---
   const [currentPage, setCurrentPage] = useState(1);
   const [totalRecords, setTotalRecords] = useState(0);
-  const PAGE_SIZE = 8; 
+  const PAGE_SIZE = 6; 
 
   const tipoConfig = {
     entrada: { label: "Entrada", icon: cilArrowTop, color: "success" },
@@ -135,7 +135,7 @@ const HistorialStock = () => {
       <CCard className="mb-4 shadow-lg border-0" style={{ borderRadius: '16px' }}>
         <CCardHeader className="py-3 border-bottom-0">
           <div className="d-flex flex-wrap align-items-center gap-3">
-            <div className="d-flex align-items-center rounded-pill px-3 py-1" style={{ width: '400px' }}>
+            <div className="d-flex bg-body-secondary align-items-center rounded-pill px-3 py-1" style={{ width: '400px' }}>
               <CIcon icon={cilSearch} className="text-muted me-2" />
               <CFormInput
                 type="text"

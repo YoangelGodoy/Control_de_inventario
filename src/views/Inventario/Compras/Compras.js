@@ -153,7 +153,7 @@ const ComprasRepuestos = () => {
       <CCard className="mb-4 shadow-lg border-0" style={{ borderRadius: '16px' }}>
         <CCardHeader className="py-3 border-bottom-0">
           <div className="d-flex justify-content-between align-items-center">
-            <div className="d-flex align-items-center rounded-pill px-3 py-1" style={{ width: '400px' }}>
+            <div className="d-flex bg-body-secondary align-items-center rounded-pill px-3 py-1" style={{ width: '400px' }}>
               <CIcon icon={cilSearch} className="text-muted me-2" />
               <CFormInput
                 placeholder="Buscar por producto o SKU..."
@@ -195,9 +195,9 @@ const ComprasRepuestos = () => {
                   </CTableDataCell>
                   <CTableDataCell>{c.proveedores?.nombre || "-"}</CTableDataCell>
                   <CTableDataCell className="text-center">{c.cantidad}</CTableDataCell>
-                  <CTableDataCell className="text-end">USD {c.precio_costo_unitario?.toFixed(2)}</CTableDataCell>
+                  <CTableDataCell className="text-end fw-bold text-success">$ {c.precio_costo_unitario?.toFixed(2)}</CTableDataCell>
                   <CTableDataCell className="text-end fw-bold text-primary">
-                    USD {(c.cantidad * c.precio_costo_unitario).toFixed(2)}
+                    $ {(c.cantidad * c.precio_costo_unitario).toFixed(2)}
                   </CTableDataCell>
                 </CTableRow>
               ))}
@@ -329,7 +329,7 @@ const ComprasRepuestos = () => {
               </CCol>
             </CRow>
           </CModalBody>
-          <CModalFooter className="border-0 p-4 pt-0 d-flex gap-3 bg-light">
+          <CModalFooter className="border-0 p-4 pt-0 d-flex gap-3 bg-body-secondary">
             <CButton
               type="button"
               color="secondary"

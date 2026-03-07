@@ -12,7 +12,9 @@ const Login = React.lazy(() => import ('./views/pages/login/Login'))
 const Register = React.lazy(() => import ('./views/pages/register/Register'))
 const clientes = React.lazy(() => import ('./views/clientes/clientes'))
 const deudas = React.lazy(() => import ('./views/deudas/deudas'))
-
+const empleados = React.lazy(() => import ('./views/empleados/empleados'))
+const Inven_empleado = React.lazy(() => import ('./views/empleados/stock_empleado'))
+const venta_empleado = React.lazy(() => import ('./views/empleados/venta_empleado'))
 
 const routes = [
   { path: '/', exact: true, name: 'Home', element: Login},
@@ -25,7 +27,10 @@ const routes = [
   { path: '/proveedores', name:'proveedores', element: proveedores  },
   { path: '/ventas', name:'Ventas', element: ventas},
   {path: '/clientes', name:'Clientes', element: clientes},
-  {path: '/deudas', name:'deudas', element: deudas}
+  {path: '/deudas', name:'deudas', element: deudas},
+  {path: '/empleados', name:'empleados', element: empleados},
+  {path: '/stock_empleado', name:'Stock_empleado', element: Inven_empleado},
+  {path: '/venta_empleado', name:'Venta_empleado', element: venta_empleado}
 ]
 
 export default routes

@@ -10,7 +10,7 @@ import { CIcon } from '@coreui/icons-react';
 import { 
   cilSearch, cilChevronBottom, cilChevronTop, cilMoney, 
   cilHistory, cilCreditCard, cilChevronLeft, cilChevronRight,
-  cilCalendar // Importado para el encabezado de fecha
+  cilCalendar, cilClock 
 } from '@coreui/icons';
 import { createClient } from "../../../supabase/client";
 import { toast } from "sonner";
@@ -114,6 +114,28 @@ const CobranzasCoreUI = () => {
     return 'danger';
   };
 
+  const calcularEstatusVencimiento = (fechaVencimiento) => {
+    if (!fechaVencimiento) return { texto: 'Sin fecha', color: 'secondary', dias: 0 };
+    
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+
+    // AGREGAMOS T00:00:00 para evitar el desfase de zona horaria
+    const vencimiento = new Date(fechaVencimiento + 'T00:00:00'); 
+    vencimiento.setHours(0, 0, 0, 0);
+    
+    const diffTime = vencimiento - hoy;
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays < 0) {
+      return { texto: `Vencido (${Math.abs(diffDays)}d)`, color: 'danger' };
+    } else if (diffDays === 0) {
+      return { texto: 'Vence hoy', color: 'warning' };
+    } else {
+      return { texto: `Faltan ${diffDays}d`, color: 'info' };
+    }
+  };
+
   const filteredCuentas = cuentas.filter(c => 
     c.clientes?.nombre?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     c.clientes?.identificacion?.includes(searchTerm)
@@ -134,7 +156,7 @@ const CobranzasCoreUI = () => {
 
       <CCard className="mb-4 shadow-lg border-0" style={{ borderRadius: '16px' }}>
         <CCardHeader className="py-3 border-bottom-0">
-          <div className="d-flex align-items-center rounded-pill px-3 py-1" style={{ width: '400px' }}>
+          <div className="d-flex bg-body-secondary align-items-center rounded-pill px-3 py-1" style={{ width: '400px' }}>
             <CIcon icon={cilSearch} className="text-muted me-2" />
             <CFormInput
               placeholder="Buscar por cliente..."
@@ -151,7 +173,8 @@ const CobranzasCoreUI = () => {
               <CTableRow>
                 <CTableHeaderCell className="text-muted small text-uppercase" style={{ width: '40px' }}></CTableHeaderCell>
                 <CTableHeaderCell className="text-muted small text-uppercase">Fecha Venta</CTableHeaderCell>
-                <CTableHeaderCell className="text-muted small text-uppercase">Cliente</CTableHeaderCell>
+                <CTableHeaderCell className="text-muted small text-uppercase" style={{ width: '20%' }}>Cliente</CTableHeaderCell>
+                <CTableHeaderCell className="text-muted small text-uppercase text-center">Vencimiento</CTableHeaderCell>
                 <CTableHeaderCell className="text-muted small text-uppercase text-center">Estado</CTableHeaderCell>
                 <CTableHeaderCell className="text-end text-muted small text-uppercase">Monto Total</CTableHeaderCell>
                 <CTableHeaderCell className="text-end text-muted small text-uppercase text-danger">Restante</CTableHeaderCell>
@@ -160,87 +183,104 @@ const CobranzasCoreUI = () => {
             </CTableHead>
             <CTableBody>
               {loading && cuentas.length === 0 ? (
-                <CTableRow><CTableDataCell colSpan="7" className="text-center py-5"><CSpinner color="primary" /></CTableDataCell></CTableRow>
+                <CTableRow><CTableDataCell colSpan="8" className="text-center py-5"><CSpinner color="primary" /></CTableDataCell></CTableRow>
               ) : filteredCuentas.length === 0 ? (
-                <CTableRow><CTableDataCell colSpan="7" className="text-center py-4 text-muted">No se encontraron registros</CTableDataCell></CTableRow>
-              ) : filteredCuentas.map((c) => (
-                <Fragment key={c.id}>
-                  <CTableRow>
-                    <CTableDataCell 
-                      onClick={() => setExpandedRows(prev => prev.includes(c.id) ? prev.filter(id => id !== c.id) : [...prev, c.id])} 
-                      style={{ cursor: 'pointer' }}
-                    >
-                      <CIcon icon={expandedRows.includes(c.id) ? cilChevronTop : cilChevronBottom} />
-                    </CTableDataCell>
-                    {/* Nueva Celda de Fecha de Venta */}
-                    <CTableDataCell>
-                      <div className="small fw-bold">
-                        {new Date(c.created_at).toLocaleDateString('es-ES', {
-                          day: '2-digit',
-                          month: '2-digit',
-                          year: 'numeric'
-                        })}
-                      </div>
-                      <div className="text-muted" style={{ fontSize: '0.75rem' }}>
-                        {new Date(c.created_at).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
-                      </div>
-                    </CTableDataCell>
-                    <CTableDataCell>
-                      <strong>{c.clientes?.nombre}</strong><br/>
-                      <small className="text-muted">{c.clientes?.identificacion}</small>
-                    </CTableDataCell>
-                    <CTableDataCell className="text-center">
-                      <CBadge color={getBadgeColor(c.estado)}>{c.estado}</CBadge>
-                    </CTableDataCell>
-                    <CTableDataCell className="text-end fw-bold">${Number(c.monto_total).toFixed(2)}</CTableDataCell>
-                    <CTableDataCell className="text-end fw-bold text-danger">${Number(c.saldo_pendiente).toFixed(2)}</CTableDataCell>
-                    <CTableDataCell className="text-center">
-                      <CButton 
-                        color="success" 
-                        size="sm" 
-                        className="text-white rounded-pill px-3"
-                        disabled={c.estado === 'PAGADA'}
-                        onClick={() => {
-                          setCuentaSeleccionada(c);
-                          setModalVisible(true);
-                        }}
-                      >
-                        <CIcon icon={cilMoney} className="me-1"/> Abonar
-                      </CButton>
-                    </CTableDataCell>
-                  </CTableRow>
-                  
-                  {expandedRows.includes(c.id) && (
+                <CTableRow><CTableDataCell colSpan="8" className="text-center py-4 text-muted">No se encontraron registros</CTableDataCell></CTableRow>
+              ) : filteredCuentas.map((c) => {
+                const estatus = calcularEstatusVencimiento(c.fecha_vencimiento);
+                return (
+                  <Fragment key={c.id}>
                     <CTableRow>
-                      <CTableDataCell colSpan="7" className="bg-light p-3">
-                        <div className="bg-white p-3 rounded shadow-sm">
-                          <h6 className="fw-bold mb-3"><CIcon icon={cilHistory} className="me-2"/>Historial de Abonos</h6>
-                          <CTable bordered size="sm">
-                            <thead>
-                              <tr>
-                                <th>Fecha Pago</th>
-                                <th>Método</th>
-                                <th>Referencia</th>
-                                <th className="text-end">Monto</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {c.pagos_clientes?.length > 0 ? c.pagos_clientes.map(p => (
-                                <tr key={p.id}>
-                                  <td>{new Date(p.created_at).toLocaleDateString()}</td>
-                                  <td>{p.metodo_pago}</td>
-                                  <td>{p.referencia || '-'}</td>
-                                  <td className="text-end text-success fw-bold">${Number(p.monto_pagado).toFixed(2)}</td>
-                                </tr>
-                              )) : <tr><td colSpan="4" className="text-center text-muted italic">No hay pagos registrados aún</td></tr>}
-                            </tbody>
-                          </CTable>
+                      <CTableDataCell 
+                        onClick={() => setExpandedRows(prev => prev.includes(c.id) ? prev.filter(id => id !== c.id) : [...prev, c.id])} 
+                        style={{ cursor: 'pointer' }}
+                      >
+                        <CIcon icon={expandedRows.includes(c.id) ? cilChevronTop : cilChevronBottom} />
+                      </CTableDataCell>
+                      <CTableDataCell>
+                        <div className="small fw-bold">
+                          {new Date(c.created_at).toLocaleDateString('es-ES', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric'
+                          })}
+                        </div>
+                        <div className="text-muted" style={{ fontSize: '0.75rem' }}>
+                          {new Date(c.created_at).toLocaleTimeString('es-ES', { 
+                            hour: '2-digit', 
+                            minute: '2-digit', 
+                            hour12: true 
+                          })}
                         </div>
                       </CTableDataCell>
+                      <CTableDataCell>
+                        <strong>{c.clientes?.nombre}</strong><br/>
+                        <small className="text-muted">{c.clientes?.identificacion}</small>
+                      </CTableDataCell>
+                      <CTableDataCell className="text-center">
+                        <div className="d-flex flex-column align-items-center justify-content-center">
+                           <CBadge color={estatus.color} className="rounded-pill px-3 py-2 mb-1">
+                              <CIcon icon={cilClock} className="me-1" size="sm"/>
+                              {estatus.texto}
+                           </CBadge>
+                           <small className="text-muted" style={{fontSize: '0.7rem'}}>
+                             Límite: {c.fecha_vencimiento ? new Date(c.fecha_vencimiento + 'T00:00:00').toLocaleDateString() : 'N/A'}
+                           </small>
+                        </div>
+                      </CTableDataCell>
+                      <CTableDataCell className="text-center">
+                        <CBadge color={getBadgeColor(c.estado)}>{c.estado}</CBadge>
+                      </CTableDataCell>
+                      <CTableDataCell className="text-end fw-bold">${Number(c.monto_total).toFixed(2)}</CTableDataCell>
+                      <CTableDataCell className="text-end fw-bold text-danger">${Number(c.saldo_pendiente).toFixed(2)}</CTableDataCell>
+                      <CTableDataCell className="text-center">
+                        <CButton 
+                          color="success" 
+                          size="sm" 
+                          className="text-white rounded-pill px-3"
+                          disabled={c.estado === 'PAGADA'}
+                          onClick={() => {
+                            setCuentaSeleccionada(c);
+                            setModalVisible(true);
+                          }}
+                        >
+                          <CIcon icon={cilMoney} className="me-1"/> Abonar
+                        </CButton>
+                      </CTableDataCell>
                     </CTableRow>
-                  )}
-                </Fragment>
-              ))}
+                    
+                    {expandedRows.includes(c.id) && (
+                      <CTableRow>
+                        <CTableDataCell colSpan="8" className="bg-body-secondary p-3">
+                          <div className="bg-body-tertiary p-3 rounded shadow-sm">
+                            <h6 className="fw-bold mb-3"><CIcon icon={cilHistory} className="me-2"/>Historial de Abonos</h6>
+                            <CTable bordered size="sm">
+                              <thead>
+                                <tr>
+                                  <th>Fecha Pago</th>
+                                  <th>Método</th>
+                                  <th>Referencia</th>
+                                  <th className="text-end">Monto</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {c.pagos_clientes?.length > 0 ? c.pagos_clientes.map(p => (
+                                  <tr key={p.id}>
+                                    <td>{new Date(p.created_at).toLocaleDateString()}</td>
+                                    <td>{p.metodo_pago}</td>
+                                    <td>{p.referencia || '-'}</td>
+                                    <td className="text-end text-success fw-bold">${Number(p.monto_pagado).toFixed(2)}</td>
+                                  </tr>
+                                )) : <tr><td colSpan="4" className="text-center text-muted italic">No hay pagos registrados aún</td></tr>}
+                              </tbody>
+                            </CTable>
+                          </div>
+                        </CTableDataCell>
+                      </CTableRow>
+                    )}
+                  </Fragment>
+                );
+              })}
             </CTableBody>
           </CTable>
 
@@ -283,14 +323,14 @@ const CobranzasCoreUI = () => {
         </CCardBody>
       </CCard>
 
-      {/* MODAL PARA REGISTRAR ABONO */}
+      {/* MODAL DE PAGO (SIN CAMBIOS ESTRUCTURALES) */}
       <CModal visible={modalVisible} onClose={() => setModalVisible(false)} alignment="center" backdrop="static">
         <CForm onSubmit={handleRegistrarPago}>
           <CModalHeader className="bg-success text-white border-0 py-3">
             <CModalTitle className="fw-bold text-white m-0 fs-5">Registrar Abono</CModalTitle>
           </CModalHeader>
           <CModalBody className="p-4">
-            <div className="mb-4 text-center p-3 bg-light rounded" style={{ borderRadius: '12px' }}>
+            <div className="mb-4 text-center p-3 bg-body-secondary rounded" style={{ borderRadius: '12px' }}>
               <span className="text-muted small text-uppercase">Saldo Pendiente</span>
               <h3 className="text-danger fw-bold m-0">${Number(cuentaSeleccionada?.saldo_pendiente).toFixed(2)}</h3>
             </div>
@@ -299,7 +339,7 @@ const CobranzasCoreUI = () => {
               <CCol md={12}>
                 <CFormLabel className="fw-bold text-muted small ms-1">Monto a Pagar</CFormLabel>
                 <CInputGroup className="shadow-sm">
-                  <CInputGroupText className="bg-white border-end-0">$</CInputGroupText>
+                  <CInputGroupText className="bg-body-secondary border-end-0">$</CInputGroupText>
                   <CFormInput 
                     type="number" 
                     step="0.01" 
@@ -340,7 +380,7 @@ const CobranzasCoreUI = () => {
               </CCol>
             </CRow>
           </CModalBody>
-          <CModalFooter className="border-0 p-4 pt-0 d-flex gap-3 bg-light">
+          <CModalFooter className="border-0 p-4 pt-0 d-flex gap-3 bg-body-secondary">
             <CButton color="secondary" variant="ghost" className="flex-grow-1 py-2 fw-bold" onClick={() => setModalVisible(false)}>
               Cancelar
             </CButton>

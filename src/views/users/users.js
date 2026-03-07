@@ -195,7 +195,7 @@ const AUsers = () => {
 
       <CCard className="mb-4 shadow-lg border-0" style={{ borderRadius: '16px' }}>
         <CCardHeader className="py-3 border-bottom-0">
-          <div className="d-flex align-items-center rounded-pill px-3 py-1" style={{ width: '400px' }}>
+          <div className="d-flex bg-body-secondary align-items-center rounded-pill px-3 py-1" style={{ width: '400px' }}>
             <CIcon icon={cilSearch} className="text-muted me-2" />
             <CFormInput
               type="text"
@@ -334,7 +334,7 @@ const AUsers = () => {
                </CCol>
              </CRow>
            </CModalBody>
-           <CModalFooter className="border-0 p-4 pt-0 d-flex gap-3 bg-light">
+           <CModalFooter className="border-0 p-4 pt-0 d-flex gap-3 bg-body-secondary">
              <CButton color="secondary" variant="ghost" className="flex-grow-1 py-2 fw-bold" onClick={handleCancel}>Cancelar</CButton>
              <CButton color="primary" className="flex-grow-1 py-2 fw-bold text-white shadow-sm" style={{ borderRadius: '12px' }} onClick={() => { if (formData.name?.trim() && formData.lastname?.trim()) setConfirmModalVisible(true); else toast.warning('Datos incompletos'); }}>Guardar Cambios</CButton>
            </CModalFooter>
