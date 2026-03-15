@@ -459,7 +459,7 @@ const VentasCoreUI = () => {
             <div className="bg-body-tertiary p-3 rounded mb-3 border" style={{ borderRadius: '12px' }}>
               <h6 className="fw-bold text-muted small mb-2">Agregar Productos</h6>
               <Select
-                className="mb-3 bg-body-secondary"
+                className="mb-3"
                 options={productOptions}
                 value={null} 
                 placeholder="Escribe para buscar un repuesto..."
