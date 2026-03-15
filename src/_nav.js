@@ -108,7 +108,7 @@ const _nav = [
   },
   {
     component: CNavItem,
-    name: 'Deudas',
+    name: 'Ventas a Credito',
     to: '/deudas',
     icon: <CIcon icon={cilCreditCard} customClassName="nav-icon" />,
   },

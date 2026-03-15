@@ -268,10 +268,12 @@ const AUsers = () => {
             </CTableBody>
           </CTable>
 
-          {/* COMPONENTE DE PAGINACIÓN */}
+          {/* PAGINACIÓN INTELIGENTE */}
           {!loading && totalPages > 1 && (
             <div className="d-flex justify-content-between align-items-center mt-4">
-              <span className="text-muted small">Mostrando {users.length} de {totalRecords} usuarios</span>
+              <div className="text-muted small">
+                Página {currentPage} de {totalPages} ({totalRecords} clientes)
+              </div>
               <CPagination align="end" className="mb-0">
                 <CPaginationItem 
                   disabled={currentPage === 1} 
@@ -280,17 +282,35 @@ const AUsers = () => {
                 >
                   <CIcon icon={cilChevronLeft} />
                 </CPaginationItem>
-                
-                {[...Array(totalPages)].map((_, i) => (
-                  <CPaginationItem 
-                    key={i + 1}
-                    active={currentPage === i + 1}
-                    onClick={() => setCurrentPage(i + 1)}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    {i + 1}
-                  </CPaginationItem>
-                ))}
+
+                {(() => {
+                  const pages = [];
+                  const leftSide = Math.max(1, currentPage - 1);
+                  const rightSide = Math.min(totalPages, currentPage + 1);
+
+                  pages.push(
+                    <CPaginationItem key={1} active={currentPage === 1} onClick={() => setCurrentPage(1)}>1</CPaginationItem>
+                  );
+
+                  if (leftSide > 2) pages.push(<CPaginationItem key="dots-l" disabled>...</CPaginationItem>);
+
+                  for (let i = leftSide; i <= rightSide; i++) {
+                    if (i !== 1 && i !== totalPages) {
+                      pages.push(
+                        <CPaginationItem key={i} active={currentPage === i} onClick={() => setCurrentPage(i)}>{i}</CPaginationItem>
+                      );
+                    }
+                  }
+
+                  if (rightSide < totalPages - 1) pages.push(<CPaginationItem key="dots-r" disabled>...</CPaginationItem>);
+
+                  if (totalPages > 1) {
+                    pages.push(
+                      <CPaginationItem key={totalPages} active={currentPage === totalPages} onClick={() => setCurrentPage(totalPages)}>{totalPages}</CPaginationItem>
+                    );
+                  }
+                  return pages;
+                })()}
 
                 <CPaginationItem 
                   disabled={currentPage === totalPages} 

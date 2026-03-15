@@ -20,13 +20,14 @@ const ProveedoresCoreUI = () => {
   // Estados de datos
   const [proveedores, setProveedores] = useState([]);
   
-  // Estados de Paginación
+  // Estados de Búsqueda y Paginación (Server-side)
+  const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [totalRecords, setTotalRecords] = useState(0);
   const PAGE_SIZE = 8; 
 
   // Estados de UI
-  const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
   const [modalDeleteVisible, setModalDeleteVisible] = useState(false);
@@ -38,16 +39,32 @@ const ProveedoresCoreUI = () => {
   const initialFormState = { nombre: '', telefono: '', email: '', direccion: '' };
   const [formData, setFormData] = useState(initialFormState);
 
-  // 1. Cargar Datos con Paginación (Server-side)
+  // 1. Lógica de Debounce para búsqueda eficiente
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+      setCurrentPage(1); 
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  // 2. Cargar Datos con Filtrado Remoto
   const fetchProveedores = useCallback(async () => {
     setLoading(true);
     try {
       const from = (currentPage - 1) * PAGE_SIZE;
       const to = from + PAGE_SIZE - 1;
 
-      const { data, count, error } = await supabase
+      let query = supabase
         .from("proveedores")
-        .select("*", { count: 'exact' })
+        .select("*", { count: 'exact' });
+
+      // Filtrado en el servidor mediante .or() e .ilike
+      if (debouncedSearch) {
+        query = query.or(`nombre.ilike.%${debouncedSearch}%,email.ilike.%${debouncedSearch}%`);
+      }
+
+      const { data, count, error } = await query
         .order("nombre", { ascending: true })
         .range(from, to);
 
@@ -59,17 +76,13 @@ const ProveedoresCoreUI = () => {
     } finally {
       setLoading(false);
     }
-  }, [supabase, currentPage]);
+  }, [supabase, currentPage, debouncedSearch]);
 
   useEffect(() => {
     fetchProveedores();
   }, [fetchProveedores]);
 
-  // Resetear a página 1 cuando se busca
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchTerm]);
-
+  // Sincronizar datos para edición
   useEffect(() => {
     if (updateData) {
       setFormData({
@@ -83,6 +96,19 @@ const ProveedoresCoreUI = () => {
     }
     setValidated(false);
   }, [updateData]);
+
+  // Manejadores de eventos
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleCancel = () => {
+    setFormData(initialFormState);
+    setUpdateData(null);
+    setModalVisible(false);
+    setValidated(false);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -112,7 +138,7 @@ const ProveedoresCoreUI = () => {
 
       if (error) throw error;
       
-      toast.success(updateData ? "Actualizado correctamente" : "Proveedor registrado");
+      toast.success(updateData ? "Proveedor actualizado" : "Proveedor registrado");
       fetchProveedores();
       handleCancel();
     } catch (error) {
@@ -136,46 +162,28 @@ const ProveedoresCoreUI = () => {
     }
   };
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-  };
-
-  const handleCancel = () => {
-    setFormData(initialFormState);
-    setUpdateData(null);
-    setModalVisible(false);
-    setValidated(false);
-  };
-
-  // Filtrado local (para la página actual)
-  const filteredProveedores = proveedores.filter(prov => {
-    const searchLower = searchTerm.toLowerCase();
-    return prov.nombre?.toLowerCase().includes(searchLower) || 
-           prov.email?.toLowerCase().includes(searchLower);
-  });
-
   const totalPages = Math.ceil(totalRecords / PAGE_SIZE);
 
   return (
     <CContainer>
-      {/* Cabecera */}
+      {/* Cabecera Estilo Card */}
       <CCard className="mb-4 shadow-lg border-0 overflow-hidden w-100" style={{ borderRadius: '16px' }}>
         <CCardHeader className="bg-primary text-white py-3">
           <h2 className="fw-bold text-white d-flex align-items-center m-0 fs-4 text-uppercase">
             <CIcon icon={cilTruck} className="me-2 " />
-            Directorio de Proveedores
+            Gestión de Proveedores
           </h2>
         </CCardHeader>
       </CCard>
       
+      {/* Tabla y Filtros */}
       <CCard className="mb-4 shadow-lg border-0" style={{ borderRadius: '16px' }}>
         <CCardHeader className="py-3 border-bottom-0">
-          <div className="d-flex justify-content-between align-items-center">
-            <div className="d-flex bg-body-secondary align-items-center rounded-pill px-3 py-1" style={{ width: '400px' }}>
+          <div className="d-flex justify-content-between align-items-center gap-3 flex-wrap">
+            <div className="d-flex bg-body-secondary align-items-center rounded-pill px-3 py-1" style={{ minWidth: '350px' }}>
               <CIcon icon={cilSearch} className="text-muted me-2" />
               <CFormInput
-                placeholder="Buscar por nombre o correo..."
+                placeholder="Buscar nombre o correo..."
                 className="border-0 bg-transparent shadow-none"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -183,36 +191,39 @@ const ProveedoresCoreUI = () => {
             </div>
             <CButton 
               color="success" 
-              className="text-white rounded-pill px-4" 
+              className="text-white rounded-pill px-4 fw-bold" 
               onClick={() => { setUpdateData(null); setModalVisible(true); }}
             >
               <CIcon icon={cilPlus} className="me-2"/> Nuevo Proveedor
             </CButton>
           </div>
         </CCardHeader>
+
         <CCardBody className="px-4">
           <CTable hover responsive align="middle" className="mb-0">
             <CTableHead>
               <CTableRow>
-                <CTableHeaderCell className="text-muted small text-uppercase">Nombre / Empresa</CTableHeaderCell>
+                <CTableHeaderCell className="text-muted small text-uppercase">Nombre / Razón Social</CTableHeaderCell>
                 <CTableHeaderCell className="text-muted small text-uppercase">Contacto</CTableHeaderCell>
-                <CTableHeaderCell className="text-muted small text-uppercase">Dirección</CTableHeaderCell>
+                <CTableHeaderCell className="text-muted small text-uppercase">Ubicación</CTableHeaderCell>
                 <CTableHeaderCell className="text-end text-muted small text-uppercase">Acciones</CTableHeaderCell>
               </CTableRow>
             </CTableHead>
             <CTableBody>
               {loading ? (
                 <CTableRow><CTableDataCell colSpan="4" className="text-center py-5"><CSpinner color="primary" /></CTableDataCell></CTableRow>
-              ) : filteredProveedores.length === 0 ? (
-                <CTableRow><CTableDataCell colSpan="4" className="text-center py-4 text-muted">No se encontraron proveedores</CTableDataCell></CTableRow>
-              ) : filteredProveedores.map((prov) => (
+              ) : proveedores.length === 0 ? (
+                <CTableRow><CTableDataCell colSpan="4" className="text-center py-4 text-muted">No se encontraron registros</CTableDataCell></CTableRow>
+              ) : proveedores.map((prov) => (
                 <CTableRow key={prov.id}>
                   <CTableDataCell>
-                    <div className="fw-bold text-body text-uppercase small">{prov.nombre}</div>
-                    <div className="small text-muted">{prov.email ?? "Sin correo registrado"}</div>
+                    <div className="fw-bold text-uppercase small text-body">{prov.nombre}</div>
+                    <div className="small text-muted">{prov.email ?? "Sin email"}</div>
                   </CTableDataCell>
-                  <CTableDataCell className="small">{prov.telefono ?? "-"}</CTableDataCell>
-                  <CTableDataCell className="small text-muted">{prov.direccion ?? "-"}</CTableDataCell>
+                  <CTableDataCell className="small">{prov.telefono ?? "N/A"}</CTableDataCell>
+                  <CTableDataCell className="small text-muted text-truncate" style={{ maxWidth: '200px' }}>
+                    {prov.direccion ?? "N/A"}
+                  </CTableDataCell>
                   <CTableDataCell className="text-end">
                     <CButton color="info" variant="ghost" size="sm" className="rounded-pill" onClick={() => { setUpdateData(prov); setModalVisible(true) }}>
                       <CIcon icon={cilPencil} />
@@ -226,11 +237,11 @@ const ProveedoresCoreUI = () => {
             </CTableBody>
           </CTable>
 
-          {/* PAGINACIÓN */}
+          {/* Paginación */}
           {!loading && totalPages > 1 && (
-            <div className="d-flex justify-content-between align-items-center mt-4">
+            <div className="d-flex justify-content-between align-items-center mt-4 pt-3 border-top">
               <div className="text-muted small">
-                Mostrando {proveedores.length} de {totalRecords} registros
+                Página {currentPage} de {totalPages} ({totalRecords} proveedores)
               </div>
               <CPagination align="end" className="mb-0">
                 <CPaginationItem 
@@ -240,18 +251,16 @@ const ProveedoresCoreUI = () => {
                 >
                   <CIcon icon={cilChevronLeft} />
                 </CPaginationItem>
-                
                 {[...Array(totalPages)].map((_, i) => (
-                  <CPaginationItem 
-                    key={i + 1}
-                    active={currentPage === i + 1}
-                    onClick={() => setCurrentPage(i + 1)}
+                   <CPaginationItem 
+                    key={i+1} 
+                    active={currentPage === i+1} 
+                    onClick={() => setCurrentPage(i+1)}
                     style={{ cursor: 'pointer' }}
-                  >
-                    {i + 1}
-                  </CPaginationItem>
+                   >
+                     {i+1}
+                   </CPaginationItem>
                 ))}
-
                 <CPaginationItem 
                   disabled={currentPage === totalPages} 
                   onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
@@ -265,131 +274,86 @@ const ProveedoresCoreUI = () => {
         </CCardBody>
       </CCard>
 
-      {/* MODAL FORMULARIO */}
-      <CModal
-        visible={modalVisible}
-        onClose={handleCancel}
-        size="lg"
-        alignment="center"
-        backdrop="static"
-      >
-        <CForm noValidate validated={validated} onSubmit={handleSubmit} className="overflow-visible">
+      {/* Modal Formulario */}
+      <CModal visible={modalVisible} onClose={handleCancel} size="lg" alignment="center" backdrop="static">
+        <CForm noValidate validated={validated} onSubmit={handleSubmit}>
           <CModalHeader className="bg-primary text-white border-0 py-3">
             <CModalTitle className="fw-bold text-white m-0 fs-5">
-              {updateData ? 'Editar Proveedor' : 'Nuevo Proveedor'}
+              {updateData ? 'Actualizar Proveedor' : 'Registrar Nuevo Proveedor'}
             </CModalTitle>
           </CModalHeader>
-
           <CModalBody className="p-4">
-              <CRow className="g-4">
-                <CCol md={6}>
-                  <CFormLabel className="fw-bold text-muted small mb-2 ms-1">Nombre o Razón Social *</CFormLabel>
-                  <CFormInput
-                    name="nombre"
-                    value={formData.nombre}
-                    onChange={handleChange}
-                    placeholder="Ej: Distribuidora Polar"
-                    required
-                    className="border shadow-sm py-2 px-3"
-                    style={{ borderRadius: '12px' }}
-                    invalid={validated && !formData.nombre.trim()}
-                  />
-                  <CFormFeedback invalid>El nombre es obligatorio.</CFormFeedback>
-                </CCol>
-                <CCol md={6}>
-                  <CFormLabel className="fw-bold text-muted small mb-2 ms-1">Teléfono</CFormLabel>
-                  <CFormInput
-                    name="telefono"
-                    value={formData.telefono}
-                    onChange={handleChange}
-                    placeholder="Ej: +58 412..."
-                    className="border shadow-sm py-2 px-3"
-                    style={{ borderRadius: '12px' }}
-                  />
-                </CCol>
-                <CCol md={12}>
-                  <CFormLabel className="fw-bold text-muted small mb-2 ms-1">Correo Electrónico</CFormLabel>
-                  <CFormInput
-                    type="email"
-                    name="email"
-                    value={formData.email}
-                    onChange={handleChange}
-                    placeholder="proveedor@empresa.com"
-                    className="border shadow-sm py-2 px-3"
-                    style={{ borderRadius: '12px' }}
-                  />
-                </CCol>
-                <CCol md={12}>
-                  <CFormLabel className="fw-bold text-muted small mb-2 ms-1">Dirección</CFormLabel>
-                  <CFormInput
-                    name="direccion"
-                    value={formData.direccion}
-                    onChange={handleChange}
-                    placeholder="Calle, Ciudad..."
-                    className="border shadow-sm py-2 px-3"
-                    style={{ borderRadius: '12px' }}
-                  />
-                </CCol>
-              </CRow>
+            <CRow className="g-4">
+              <CCol md={6}>
+                <CFormLabel className="fw-bold text-muted small mb-2">Nombre o Razón Social *</CFormLabel>
+                <CFormInput
+                  name="nombre"
+                  value={formData.nombre}
+                  onChange={handleChange}
+                  placeholder="Ej: Repuestos El Sol C.A."
+                  required
+                  className="py-2 border-secondary-subtle"
+                  style={{ borderRadius: '10px' }}
+                />
+              </CCol>
+              <CCol md={6}>
+                <CFormLabel className="fw-bold text-muted small mb-2">Teléfono de contacto</CFormLabel>
+                <CFormInput
+                  name="telefono"
+                  value={formData.telefono}
+                  onChange={handleChange}
+                  placeholder="+58 414..."
+                  className="py-2 border-secondary-subtle"
+                  style={{ borderRadius: '10px' }}
+                />
+              </CCol>
+              <CCol md={12}>
+                <CFormLabel className="fw-bold text-muted small mb-2">Correo Electrónico</CFormLabel>
+                <CFormInput
+                  type="email"
+                  name="email"
+                  value={formData.email}
+                  onChange={handleChange}
+                  placeholder="contacto@proveedor.com"
+                  className="py-2 border-secondary-subtle"
+                  style={{ borderRadius: '10px' }}
+                />
+              </CCol>
+              <CCol md={12}>
+                <CFormLabel className="fw-bold text-muted small mb-2">Dirección Fiscal / Oficina</CFormLabel>
+                <CFormInput
+                  name="direccion"
+                  value={formData.direccion}
+                  onChange={handleChange}
+                  placeholder="Av. Principal, Edificio X, Piso 1"
+                  className="py-2 border-secondary-subtle"
+                  style={{ borderRadius: '10px' }}
+                />
+              </CCol>
+            </CRow>
           </CModalBody>
-
-          <CModalFooter className="border-0 p-4 pt-0 d-flex gap-3 bg-body-secondary">
-            <CButton
-              type="button"
-              color="secondary"
-              variant="ghost"
-              className="flex-grow-1 py-2 fw-bold"
-              style={{ borderRadius: '12px' }}
-              onClick={handleCancel}
-            >
-              Cancelar
-            </CButton>
-            <CButton
-              type="submit"
-              color="primary"
-              className="flex-grow-1 py-2 fw-bold text-white shadow-sm"
-              style={{ borderRadius: '12px' }}
-              disabled={submitting}
-            >
-              {submitting ? <CSpinner size="sm" /> : 'Guardar'}
+          <CModalFooter className="border-0 p-4 pt-0 d-flex gap-3 bg-body-secondary mt-3">
+            <CButton color="secondary" variant="ghost" className="flex-grow-1 fw-bold" onClick={handleCancel}>Cancelar</CButton>
+            <CButton type="submit" color="primary" className="flex-grow-1 text-white fw-bold shadow-sm" disabled={submitting}>
+              {submitting ? <CSpinner size="sm" /> : 'Guardar Datos'}
             </CButton>
           </CModalFooter>
         </CForm>
       </CModal>
 
-      {/* MODAL ELIMINAR */}
-      <CModal
-        visible={modalDeleteVisible}
-        onClose={() => setModalDeleteVisible(false)}
-        alignment="center"
-        backdrop="static"
-      >
-        <CModalHeader className="bg-primary text-white border-0 py-3">
-          <CModalTitle className="fw-bold text-white m-0 fs-5">Confirmar eliminación</CModalTitle>
+      {/* Modal Eliminar */}
+      <CModal visible={modalDeleteVisible} onClose={() => setModalDeleteVisible(false)} alignment="center">
+        <CModalHeader className="bg-danger text-white border-0 py-3">
+          <CModalTitle className="fw-bold m-0 fs-5">Confirmar Eliminación</CModalTitle>
         </CModalHeader>
         <CModalBody className="text-center p-4">
-          <CIcon icon={cilTrash} size="xl" className="text-danger mb-2" />
-          <h6 className="fw-bold mb-1">¿Eliminar proveedor?</h6>
-          <p className="text-muted small mb-0">Esta acción es permanente y no podrá revertirse.</p>
+          <CIcon icon={cilTrash} size="xl" className="text-danger mb-3" />
+          <h6 className="fw-bold">¿Deseas eliminar este proveedor?</h6>
+          <p className="text-muted small">Esta acción no se puede deshacer y afectará los registros asociados.</p>
         </CModalBody>
         <CModalFooter className="border-0 p-4 pt-0 d-flex gap-3 bg-body-secondary">
-          <CButton
-            color="secondary"
-            variant="ghost"
-            className="flex-grow-1 py-2 fw-bold"
-            style={{ borderRadius: '12px' }}
-            onClick={() => setModalDeleteVisible(false)}
-          >
-            Cancelar
-          </CButton>
-          <CButton
-            color="danger"
-            className="flex-grow-1 py-2 fw-bold text-white shadow-sm"
-            style={{ borderRadius: '12px' }}
-            onClick={confirmDelete}
-          >
-            Eliminar
-          </CButton>
+          <CButton color="secondary" variant="ghost" className="flex-grow-1 fw-bold" onClick={() => setModalDeleteVisible(false)}>Cancelar</CButton>
+          <CButton color="danger" className="flex-grow-1 text-white fw-bold shadow-sm" onClick={confirmDelete}>Eliminar</CButton>
         </CModalFooter>
       </CModal>
     </CContainer>

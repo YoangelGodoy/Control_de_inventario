@@ -21,14 +21,16 @@ const CobranzasCoreUI = () => {
   // Estados de datos
   const [cuentas, setCuentas] = useState([]);
   
-  // Estados de Paginación
+  // Estados de Paginación y Filtros (Unificados)
   const [currentPage, setCurrentPage] = useState(1);
   const [totalRecords, setTotalRecords] = useState(0);
-  const PAGE_SIZE = 7;
+  const PAGE_SIZE = 5;
+  const [filters, setFilters] = useState({
+    search: '',
+  });
 
   // Estados de UI
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
   const [expandedRows, setExpandedRows] = useState([]);
   
   // Estados para el Modal de Pago
@@ -38,20 +40,27 @@ const CobranzasCoreUI = () => {
   const [metodoPago, setMetodoPago] = useState('Efectivo');
   const [referencia, setReferencia] = useState('');
 
-  // 1. Cargar Cuentas con Paginación
+  // 1. Cargar Cuentas con Paginación y Filtro por Servidor
   const fetchCuentas = useCallback(async () => {
     setLoading(true);
     try {
       const from = (currentPage - 1) * PAGE_SIZE;
       const to = from + PAGE_SIZE - 1;
 
-      const { data, count, error } = await supabase
-        .from("cuentas_por_cobrar")
+      // Usamos la VISTA para poder filtrar por nombre/rif directamente
+      let query = supabase
+        .from("cobranzas_con_clientes")
         .select(`
           *,
-          clientes ( nombre, identificacion ),
           pagos_clientes ( id, monto_pagado, metodo_pago, created_at, referencia )
-        `, { count: 'exact' })
+        `, { count: 'exact' });
+
+      // Aplicar filtro de búsqueda si existe
+      if (filters.search) {
+        query = query.or(`cliente_nombre.ilike.%${filters.search}%, cliente_rif.ilike.%${filters.search}%`);
+      }
+
+      const { data, count, error } = await query
         .order("created_at", { ascending: false })
         .range(from, to);
 
@@ -63,15 +72,16 @@ const CobranzasCoreUI = () => {
     } finally {
       setLoading(false);
     }
-  }, [supabase, currentPage]);
+  }, [supabase, currentPage, filters]);
 
   useEffect(() => {
     fetchCuentas();
   }, [fetchCuentas]);
 
+  // Reiniciar a página 1 cuando cambia la búsqueda
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm]);
+  }, [filters.search]);
 
   const handleRegistrarPago = async (e) => {
     e.preventDefault();
@@ -116,14 +126,10 @@ const CobranzasCoreUI = () => {
 
   const calcularEstatusVencimiento = (fechaVencimiento) => {
     if (!fechaVencimiento) return { texto: 'Sin fecha', color: 'secondary', dias: 0 };
-    
     const hoy = new Date();
     hoy.setHours(0, 0, 0, 0);
-
-    // AGREGAMOS T00:00:00 para evitar el desfase de zona horaria
     const vencimiento = new Date(fechaVencimiento + 'T00:00:00'); 
     vencimiento.setHours(0, 0, 0, 0);
-    
     const diffTime = vencimiento - hoy;
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
@@ -136,11 +142,6 @@ const CobranzasCoreUI = () => {
     }
   };
 
-  const filteredCuentas = cuentas.filter(c => 
-    c.clientes?.nombre?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.clientes?.identificacion?.includes(searchTerm)
-  );
-
   const totalPages = Math.ceil(totalRecords / PAGE_SIZE);
 
   return (
@@ -149,7 +150,7 @@ const CobranzasCoreUI = () => {
         <CCardHeader className="bg-primary text-white py-3">
           <h2 className="fw-bold text-white d-flex align-items-center m-0 fs-4 text-uppercase">
             <CIcon icon={cilCreditCard} className="me-2 " />
-            DEUDAS Y COBRANZAS
+            VENTAS A CREDITO
           </h2>
         </CCardHeader>
       </CCard>
@@ -159,10 +160,10 @@ const CobranzasCoreUI = () => {
           <div className="d-flex bg-body-secondary align-items-center rounded-pill px-3 py-1" style={{ width: '400px' }}>
             <CIcon icon={cilSearch} className="text-muted me-2" />
             <CFormInput
-              placeholder="Buscar por cliente..."
+              placeholder="Buscar por cliente o identificación..."
               className="border-0 bg-transparent shadow-none"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              value={filters.search}
+              onChange={(e) => setFilters({ ...filters, search: e.target.value })}
             />
           </div>
         </CCardHeader>
@@ -182,11 +183,11 @@ const CobranzasCoreUI = () => {
               </CTableRow>
             </CTableHead>
             <CTableBody>
-              {loading && cuentas.length === 0 ? (
+              {loading ? (
                 <CTableRow><CTableDataCell colSpan="8" className="text-center py-5"><CSpinner color="primary" /></CTableDataCell></CTableRow>
-              ) : filteredCuentas.length === 0 ? (
+              ) : cuentas.length === 0 ? (
                 <CTableRow><CTableDataCell colSpan="8" className="text-center py-4 text-muted">No se encontraron registros</CTableDataCell></CTableRow>
-              ) : filteredCuentas.map((c) => {
+              ) : cuentas.map((c) => {
                 const estatus = calcularEstatusVencimiento(c.fecha_vencimiento);
                 return (
                   <Fragment key={c.id}>
@@ -198,24 +199,13 @@ const CobranzasCoreUI = () => {
                         <CIcon icon={expandedRows.includes(c.id) ? cilChevronTop : cilChevronBottom} />
                       </CTableDataCell>
                       <CTableDataCell>
-                        <div className="small fw-bold">
-                          {new Date(c.created_at).toLocaleDateString('es-ES', {
-                            day: '2-digit',
-                            month: '2-digit',
-                            year: 'numeric'
-                          })}
-                        </div>
-                        <div className="text-muted" style={{ fontSize: '0.75rem' }}>
-                          {new Date(c.created_at).toLocaleTimeString('es-ES', { 
-                            hour: '2-digit', 
-                            minute: '2-digit', 
-                            hour12: true 
-                          })}
-                        </div>
+                        <div className="small fw-bold">{new Date(c.created_at).toLocaleDateString('es-ES')}</div>
+                        <div className="text-muted" style={{ fontSize: '0.75rem' }}>{new Date(c.created_at).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', hour12: true })}</div>
                       </CTableDataCell>
                       <CTableDataCell>
-                        <strong>{c.clientes?.nombre}</strong><br/>
-                        <small className="text-muted">{c.clientes?.identificacion}</small>
+                        {/* Uso de campos de la VIEW */}
+                        <strong>{c.cliente_nombre}</strong><br/>
+                        <small className="text-muted">{c.cliente_rif}</small>
                       </CTableDataCell>
                       <CTableDataCell className="text-center">
                         <div className="d-flex flex-column align-items-center justify-content-center">
@@ -284,36 +274,69 @@ const CobranzasCoreUI = () => {
             </CTableBody>
           </CTable>
 
-          {/* PAGINACIÓN */}
+          {/* PAGINACIÓN (Mantenida intacta) */}
           {!loading && totalPages > 1 && (
             <div className="d-flex justify-content-between align-items-center mt-4">
               <div className="text-muted small">
-                Mostrando {cuentas.length} de {totalRecords} registros
+                Página {currentPage} de {totalPages} ({totalRecords} registros)
               </div>
               <CPagination align="end" className="mb-0">
                 <CPaginationItem 
                   disabled={currentPage === 1} 
                   onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                  style={{ cursor: 'pointer' }}
+                  style={{ cursor: currentPage === 1 ? 'default' : 'pointer' }}
                 >
                   <CIcon icon={cilChevronLeft} />
                 </CPaginationItem>
-                
-                {[...Array(totalPages)].map((_, i) => (
-                  <CPaginationItem 
-                    key={i + 1}
-                    active={currentPage === i + 1}
-                    onClick={() => setCurrentPage(i + 1)}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    {i + 1}
-                  </CPaginationItem>
-                ))}
+
+                {(() => {
+                  const pages = [];
+                  const leftSide = Math.max(1, currentPage - 1);
+                  const rightSide = Math.min(totalPages, currentPage + 1);
+
+                  pages.push(
+                    <CPaginationItem 
+                      key={1} 
+                      active={currentPage === 1} 
+                      onClick={() => setCurrentPage(1)}
+                      style={{ cursor: 'pointer' }}
+                    >1</CPaginationItem>
+                  );
+
+                  if (leftSide > 2) pages.push(<CPaginationItem key="dots-left" disabled>...</CPaginationItem>);
+
+                  for (let i = leftSide; i <= rightSide; i++) {
+                    if (i !== 1 && i !== totalPages) {
+                      pages.push(
+                        <CPaginationItem 
+                          key={i} 
+                          active={currentPage === i} 
+                          onClick={() => setCurrentPage(i)}
+                          style={{ cursor: 'pointer' }}
+                        >{i}</CPaginationItem>
+                      );
+                    }
+                  }
+
+                  if (rightSide < totalPages - 1) pages.push(<CPaginationItem key="dots-right" disabled>...</CPaginationItem>);
+
+                  if (totalPages > 1) {
+                    pages.push(
+                      <CPaginationItem 
+                        key={totalPages} 
+                        active={currentPage === totalPages} 
+                        onClick={() => setCurrentPage(totalPages)}
+                        style={{ cursor: 'pointer' }}
+                      >{totalPages}</CPaginationItem>
+                    );
+                  }
+                  return pages;
+                })()}
 
                 <CPaginationItem 
                   disabled={currentPage === totalPages} 
                   onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                  style={{ cursor: 'pointer' }}
+                  style={{ cursor: currentPage === totalPages ? 'default' : 'pointer' }}
                 >
                   <CIcon icon={cilChevronRight} />
                 </CPaginationItem>
@@ -323,7 +346,7 @@ const CobranzasCoreUI = () => {
         </CCardBody>
       </CCard>
 
-      {/* MODAL DE PAGO (SIN CAMBIOS ESTRUCTURALES) */}
+      {/* MODAL DE PAGO (Mantenido intacto) */}
       <CModal visible={modalVisible} onClose={() => setModalVisible(false)} alignment="center" backdrop="static">
         <CForm onSubmit={handleRegistrarPago}>
           <CModalHeader className="bg-success text-white border-0 py-3">

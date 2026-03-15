@@ -5,8 +5,6 @@ import {
   CCard,
   CCardBody,
   CCardHeader,
-  CCol,
-  CRow,
   CContainer,
   CTable,
   CTableHead,
@@ -39,11 +37,12 @@ const HistorialStock = () => {
   const [movimientos, setMovimientos] = useState([]);
   const [loading, setLoading] = useState(true);
   
-  // Estados de Filtros
+  // Estados de Filtros y Búsqueda
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [tipoFilter, setTipoFilter] = useState('todos');
 
-  // --- NUEVOS ESTADOS DE PAGINACIÓN ---
+  // Estados de Paginación
   const [currentPage, setCurrentPage] = useState(1);
   const [totalRecords, setTotalRecords] = useState(0);
   const PAGE_SIZE = 6; 
@@ -62,27 +61,39 @@ const HistorialStock = () => {
     }).format(new Date(dateString));
   };
 
+  // 1. Efecto de Debounce: Espera 500ms antes de aplicar la búsqueda real
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  // 2. Efecto para resetear a la página 1 cuando cambian los filtros
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [tipoFilter, debouncedSearch]);
+
+  // 3. Fetch principal apuntando a la Vista SQL
   const fetchMovimientos = useCallback(async () => {
     setLoading(true);
 
-    // Cálculo de rango para Supabase
     const from = (currentPage - 1) * PAGE_SIZE;
     const to = from + PAGE_SIZE - 1;
 
     let query = supabase
-      .from("movimientos_stock")
-      .select(`
-        *,
-        productos (
-          nombre,
-          sku
-        )
-      `, { count: 'exact' });
+      .from("vista_historial_stock")
+      .select('*', { count: 'exact' });
 
-    // Aplicar filtro de tipo directamente en la base de datos si no es "todos"
-    // Esto es necesario para que el totalRecords de la paginación sea correcto
+    // Aplicar filtro de tipo
     if (tipoFilter !== 'todos') {
       query = query.eq('tipo', tipoFilter);
+    }
+
+    // Aplicar filtro de búsqueda global usando OR e ILIKE
+    if (debouncedSearch) {
+      query = query.or(`producto_nombre.ilike.%${debouncedSearch}%,producto_sku.ilike.%${debouncedSearch}%,notas.ilike.%${debouncedSearch}%`);
     }
 
     const { data, count, error } = await query
@@ -97,27 +108,11 @@ const HistorialStock = () => {
     }
 
     setLoading(false);
-  }, [supabase, currentPage, tipoFilter]); // Dependencias actualizadas
+  }, [supabase, currentPage, tipoFilter, debouncedSearch]);
 
   useEffect(() => {
     fetchMovimientos();
   }, [fetchMovimientos]);
-
-  // Si el usuario cambia el filtro de tipo, volvemos a la página 1
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [tipoFilter]);
-
-  // El filtrado por búsqueda se mantiene en cliente (sobre los resultados de la página)
-  // o podrías implementarlo en el query de Supabase para mayor precisión.
-  const filteredMovimientos = movimientos.filter((m) => {
-    const search = searchTerm.toLowerCase();
-    return (
-      m.productos?.nombre?.toLowerCase().includes(search) ||
-      m.productos?.sku?.toLowerCase().includes(search) ||
-      m.notas?.toLowerCase().includes(search)
-    );
-  });
 
   const totalPages = Math.ceil(totalRecords / PAGE_SIZE);
 
@@ -174,115 +169,160 @@ const HistorialStock = () => {
               </CTableRow>
             </CTableHead>
 
-                <CTableBody>
-                  {loading ? (
-                    <CTableRow>
-                      <CTableDataCell colSpan="7" className="text-center py-5">
-                        <CSpinner color="primary" />
+            <CTableBody>
+              {loading ? (
+                <CTableRow>
+                  <CTableDataCell colSpan="7" className="text-center py-5">
+                    <CSpinner color="primary" />
+                  </CTableDataCell>
+                </CTableRow>
+              ) : movimientos.length === 0 ? (
+                <CTableRow>
+                  <CTableDataCell colSpan="7" className="text-center py-4 text-muted">
+                    No se encontraron movimientos registrados
+                  </CTableDataCell>
+                </CTableRow>
+              ) : (
+                movimientos.map((m) => {
+                  const config = tipoConfig[m.tipo] || {
+                    label: m.tipo,
+                    color: "secondary",
+                    icon: cilSettings,
+                  };
+
+                  return (
+                    <CTableRow key={m.id}>
+                      <CTableDataCell className="ps-3 small">
+                        {formatDate(m.created_at)}
+                      </CTableDataCell>
+
+                      <CTableDataCell>
+                        <div className="d-flex flex-column">
+                          <span className="fw-semibold">
+                            {/* Ahora leemos directamente de la vista */}
+                            {m.producto_nombre ?? "Producto eliminado"}
+                          </span>
+                          <span className="text-medium-emphasis small font-monospace">
+                            {m.producto_sku}
+                          </span>
+                        </div>
+                      </CTableDataCell>
+
+                      <CTableDataCell>
+                        <CBadge color={config.color} className="px-3 py-2">
+                          <CIcon icon={config.icon} className="me-1" size="sm" />
+                          {config.label}
+                        </CBadge>
+                      </CTableDataCell>
+
+                      <CTableDataCell
+                        className={`text-center fw-bold ${
+                          m.tipo === 'entrada' ? 'text-success' : 
+                          m.tipo === 'salida' ? 'text-danger' : ''
+                        }`}
+                      >
+                        {m.tipo === "salida" ? "-" : "+"}
+                        {m.cantidad}
+                      </CTableDataCell>
+
+                      <CTableDataCell className="text-center text-medium-emphasis">
+                        {m.stock_anterior}
+                      </CTableDataCell>
+
+                      <CTableDataCell className="text-center fw-semibold">
+                        {m.stock_nuevo}
+                      </CTableDataCell>
+
+                      <CTableDataCell className="d-none d-md-table-cell small text-medium-emphasis">
+                        {m.notas || "-"}
                       </CTableDataCell>
                     </CTableRow>
-                  ) : filteredMovimientos.length === 0 ? (
-                    <CTableRow>
-                      <CTableDataCell colSpan="7" className="text-center py-4 text-muted">
-                        No se encontraron movimientos registrados
-                      </CTableDataCell>
-                    </CTableRow>
-                  ) : (
-                    filteredMovimientos.map((m) => {
-                      const config = tipoConfig[m.tipo] || {
-                        label: m.tipo,
-                        color: "secondary",
-                        icon: cilSettings,
-                      };
+                  );
+                })
+              )}
+            </CTableBody>
+          </CTable>
 
-                      return (
-                        <CTableRow key={m.id}>
-                          <CTableDataCell className="ps-3 small">
-                            {formatDate(m.created_at)}
-                          </CTableDataCell>
+          {/* COMPONENTE DE PAGINACIÓN */}
+          {!loading && totalPages > 1 && (
+            <div className="d-flex justify-content-between align-items-center p-3 border-top">
+              <div className="text-muted small">
+                Página {currentPage} de {totalPages} ({totalRecords} movimientos)
+              </div>
+              <CPagination align="end" className="mb-0">
+                <CPaginationItem 
+                  disabled={currentPage === 1} 
+                  onClick={() => setCurrentPage(prev => prev - 1)}
+                  style={{ cursor: currentPage === 1 ? 'default' : 'pointer' }}
+                >
+                  <CIcon icon={cilChevronLeft} />
+                </CPaginationItem>
 
-                          <CTableDataCell>
-                            <div className="d-flex flex-column">
-                              <span className="fw-semibold">
-                                {m.productos?.nombre ?? "Producto eliminado"}
-                              </span>
-                              <span className="text-medium-emphasis small font-monospace">
-                                {m.productos?.sku}
-                              </span>
-                            </div>
-                          </CTableDataCell>
+                {(() => {
+                  const pages = [];
+                  const leftSide = Math.max(1, currentPage - 1);
+                  const rightSide = Math.min(totalPages, currentPage + 1);
 
-                          <CTableDataCell>
-                            <CBadge color={config.color} className="px-3 py-2">
-                              <CIcon icon={config.icon} className="me-1" size="sm" />
-                              {config.label}
-                            </CBadge>
-                          </CTableDataCell>
-
-                          <CTableDataCell
-                            className={`text-center fw-bold ${
-                              m.tipo === 'entrada' ? 'text-success' : 
-                              m.tipo === 'salida' ? 'text-danger' : ''
-                            }`}
-                          >
-                            {m.tipo === "salida" ? "-" : "+"}
-                            {m.cantidad}
-                          </CTableDataCell>
-
-                          <CTableDataCell className="text-center text-medium-emphasis">
-                            {m.stock_anterior}
-                          </CTableDataCell>
-
-                          <CTableDataCell className="text-center fw-semibold">
-                            {m.stock_nuevo}
-                          </CTableDataCell>
-
-                          <CTableDataCell className="d-none d-md-table-cell small text-medium-emphasis">
-                            {m.notas || "-"}
-                          </CTableDataCell>
-                        </CTableRow>
-                      );
-                    })
-                  )}
-                </CTableBody>
-              </CTable>
-
-              {/* --- COMPONENTE DE PAGINACIÓN --- */}
-              {!loading && totalPages > 1 && (
-                <div className="d-flex justify-content-between align-items-center p-3 border-top">
-                  <div className="text-muted small">
-                    Página {currentPage} de {totalPages} ({totalRecords} movimientos en total)
-                  </div>
-                  <CPagination align="end" className="mb-0">
+                  pages.push(
                     <CPaginationItem 
-                      disabled={currentPage === 1} 
-                      onClick={() => setCurrentPage(prev => prev - 1)}
+                      key={1} 
+                      active={currentPage === 1} 
+                      onClick={() => setCurrentPage(1)}
                       style={{ cursor: 'pointer' }}
                     >
-                      <CIcon icon={cilChevronLeft} />
+                      1
                     </CPaginationItem>
-                    
-                    {[...Array(totalPages)].map((_, i) => (
+                  );
+
+                  if (leftSide > 2) {
+                    pages.push(<CPaginationItem key="dots-left" disabled>...</CPaginationItem>);
+                  }
+
+                  for (let i = leftSide; i <= rightSide; i++) {
+                    if (i !== 1 && i !== totalPages) {
+                      pages.push(
+                        <CPaginationItem 
+                          key={i} 
+                          active={currentPage === i} 
+                          onClick={() => setCurrentPage(i)}
+                          style={{ cursor: 'pointer' }}
+                        >
+                          {i}
+                        </CPaginationItem>
+                      );
+                    }
+                  }
+
+                  if (rightSide < totalPages - 1) {
+                    pages.push(<CPaginationItem key="dots-right" disabled>...</CPaginationItem>);
+                  }
+
+                  if (totalPages > 1) {
+                    pages.push(
                       <CPaginationItem 
-                        key={i + 1}
-                        active={currentPage === i + 1}
-                        onClick={() => setCurrentPage(i + 1)}
+                        key={totalPages} 
+                        active={currentPage === totalPages} 
+                        onClick={() => setCurrentPage(totalPages)}
                         style={{ cursor: 'pointer' }}
                       >
-                        {i + 1}
+                        {totalPages}
                       </CPaginationItem>
-                    ))}
+                    );
+                  }
 
-                    <CPaginationItem 
-                      disabled={currentPage === totalPages} 
-                      onClick={() => setCurrentPage(prev => prev + 1)}
-                      style={{ cursor: 'pointer' }}
-                    >
-                      <CIcon icon={cilChevronRight} />
-                    </CPaginationItem>
-                  </CPagination>
-                </div>
-              )}
+                  return pages;
+                })()}
+
+                <CPaginationItem 
+                  disabled={currentPage === totalPages} 
+                  onClick={() => setCurrentPage(prev => prev + 1)}
+                  style={{ cursor: currentPage === totalPages ? 'default' : 'pointer' }}
+                >
+                  <CIcon icon={cilChevronRight} />
+                </CPaginationItem>
+              </CPagination>
+            </div>
+          )}
         </CCardBody>
       </CCard>
     </CContainer>

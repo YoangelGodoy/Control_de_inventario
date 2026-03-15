@@ -22,14 +22,15 @@ const ClientesCoreUI = () => {
   // Estados de datos
   const [clientes, setClientes] = useState([]);
   
-  // Estados de Paginación
+  // Estados de Búsqueda y Paginación
+  const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [totalRecords, setTotalRecords] = useState(0);
   const PAGE_SIZE = 8; 
 
   // Estados de UI
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
   const [modalVisible, setModalVisible] = useState(false);
   const [modalDeleteVisible, setModalDeleteVisible] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -47,16 +48,32 @@ const ClientesCoreUI = () => {
   };
   const [formData, setFormData] = useState(initialFormState);
 
-  // 1. Cargar Datos con Paginación
+  // 1. Efecto Debounce para la búsqueda
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+      setCurrentPage(1); // Volver a la página 1 al buscar
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  // 2. Cargar Datos desde Supabase con Filtro y Paginación
   const fetchClientes = useCallback(async () => {
     setLoading(true);
     try {
       const from = (currentPage - 1) * PAGE_SIZE;
       const to = from + PAGE_SIZE - 1;
 
-      const { data, count, error } = await supabase
+      let query = supabase
         .from("clientes")
-        .select("*", { count: 'exact' })
+        .select("*", { count: 'exact' });
+
+      // Filtro OR en el servidor (nombre o identificación)
+      if (debouncedSearch) {
+        query = query.or(`nombre.ilike.%${debouncedSearch}%,identificacion.ilike.%${debouncedSearch}%`);
+      }
+
+      const { data, count, error } = await query
         .order("created_at", { ascending: false })
         .range(from, to);
 
@@ -68,15 +85,11 @@ const ClientesCoreUI = () => {
     } finally {
       setLoading(false);
     }
-  }, [supabase, currentPage]);
+  }, [supabase, currentPage, debouncedSearch]);
 
   useEffect(() => {
     fetchClientes();
   }, [fetchClientes]);
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchTerm]);
 
   // Sincronizar formulario
   useEffect(() => {
@@ -96,12 +109,9 @@ const ClientesCoreUI = () => {
   }, [updateData]);
 
   const handleChange = (e) => {
-    const { name, value, type, checked } = e.target;
+    const { name, value } = e.target;
     if (name === 'identificacion') setIdError(false);
-    setFormData(prev => ({ 
-      ...prev, 
-      [name]: type === 'checkbox' ? checked : value 
-    }));
+    setFormData(prev => ({ ...prev, [name]: value }));
   };
 
   const handleCancel = () => {
@@ -112,35 +122,19 @@ const ClientesCoreUI = () => {
     setIdError(false);
   };
 
-  // --- VALIDACIONES ANTES DE ENVIAR ---
-  const validateForm = () => {
-    if (!formData.identificacion.trim()) {
-      toast.warning("La identificación es obligatoria");
-      return false;
-    }
-    if (!formData.nombre.trim()) {
-      toast.warning("El nombre es obligatorio");
-      return false;
-    }
-    return true;
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     const form = e.currentTarget;
-    
     setValidated(true);
 
-    if (form.checkValidity() === false || !validateForm()) {
+    if (form.checkValidity() === false) {
       e.stopPropagation();
       return;
     }
     
     setSubmitting(true);
     try {
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError || !user) throw new Error("Sesión de usuario no encontrada");
-
+      const { data: { user } } = await supabase.auth.getUser();
       const idLimpia = formData.identificacion.trim().toUpperCase();
 
       if (!updateData) {
@@ -167,69 +161,57 @@ const ClientesCoreUI = () => {
         user_id: user.id 
       };
 
-      if (updateData) {
-        const { error: err } = await supabase
-          .from("clientes")
-          .update(payload)
-          .eq("id", updateData.id);
-        if (err) throw err;
-        toast.success("Cliente actualizado");
-      } else {
-        const { error: err } = await supabase.from("clientes").insert([payload]);
-        if (err) throw err;
-        toast.success("Cliente registrado con éxito");
-        setCurrentPage(1);
-      }
+      const { error: err } = updateData 
+        ? await supabase.from("clientes").update(payload).eq("id", updateData.id)
+        : await supabase.from("clientes").insert([payload]);
 
+      if (err) throw err;
+      
+      toast.success(updateData ? "Cliente actualizado" : "Cliente registrado");
       handleCancel();
       fetchClientes();
     } catch (error) {
-      toast.error("Error: " + (error.message || "Error desconocido"));
+      toast.error("Error: " + error.message);
     } finally {
       setSubmitting(false);
     }
   };
 
   const confirmDelete = async () => {
-    if (!clienteToDelete) return;
     try {
       const { error } = await supabase.from("clientes").delete().eq("id", clienteToDelete);
       if (error) throw error;
-      toast.success("Cliente eliminado correctamente");
+      toast.success("Cliente eliminado");
       fetchClientes();
     } catch (error) {
-      toast.error("No se pudo eliminar: " + error.message);
+      toast.error("Error al eliminar");
     } finally {
       setModalDeleteVisible(false);
       setClienteToDelete(null);
     }
   };
 
-  const filteredClientes = clientes.filter(c => 
-    c.nombre?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.identificacion?.includes(searchTerm)
-  );
-
   const totalPages = Math.ceil(totalRecords / PAGE_SIZE);
 
   return (
     <CContainer> 
-      <CCard className="mb-4 shadow-lg border-0 overflow-hidden w-100" style={{ borderRadius: '16px' }}>
+      {/* HEADER */}
+      <CCard className="mb-4 shadow-lg border-0 overflow-hidden" style={{ borderRadius: '16px' }}>
         <CCardHeader className="bg-primary text-white py-3">
           <h2 className="fw-bold text-white d-flex align-items-center m-0 fs-4 text-uppercase">
-            <CIcon icon={cilUser} className="me-2 " />
-            Gestión de Clientes
+            <CIcon icon={cilUser} className="me-2" /> Gestión de Clientes
           </h2>
         </CCardHeader>
       </CCard>
 
+      {/* SEARCH AND ACTIONS */}
       <CCard className="mb-4 shadow-lg border-0" style={{ borderRadius: '16px' }}>
         <CCardHeader className="py-3 border-bottom-0">
           <div className="d-flex justify-content-between align-items-center">
             <div className="d-flex bg-body-secondary align-items-center rounded-pill px-3 py-1" style={{ width: '400px' }}>
               <CIcon icon={cilSearch} className="text-muted me-2" />
               <CFormInput
-                placeholder="Buscar por nombre o ID..."
+                placeholder="Buscar por nombre o identificación..."
                 className="border-0 bg-transparent shadow-none"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -240,6 +222,7 @@ const ClientesCoreUI = () => {
             </CButton>
           </div>
         </CCardHeader>
+
         <CCardBody className="px-4">
           <CTable hover responsive align="middle" className="mb-0">
             <CTableHead>
@@ -253,9 +236,9 @@ const ClientesCoreUI = () => {
             <CTableBody>
               {loading ? (
                 <CTableRow><CTableDataCell colSpan="4" className="text-center py-5"><CSpinner color="primary" /></CTableDataCell></CTableRow>
-              ) : filteredClientes.length === 0 ? (
+              ) : clientes.length === 0 ? (
                 <CTableRow><CTableDataCell colSpan="4" className="text-center py-4 text-muted">No se encontraron registros</CTableDataCell></CTableRow>
-              ) : filteredClientes.map((c) => (
+              ) : clientes.map((c) => (
                 <CTableRow key={c.id}>
                   <CTableDataCell className="fw-bold text-uppercase">{c.identificacion}</CTableDataCell>
                   <CTableDataCell>{c.nombre}</CTableDataCell>
@@ -264,10 +247,10 @@ const ClientesCoreUI = () => {
                     <div className="small text-muted">{c.email || "-"}</div>
                   </CTableDataCell>
                   <CTableDataCell className="text-end">
-                    <CButton color="info" variant="ghost" size="sm" className="rounded-pill" title="Editar" onClick={() => { setUpdateData(c); setModalVisible(true); }}>
+                    <CButton color="info" variant="ghost" size="sm" onClick={() => { setUpdateData(c); setModalVisible(true); }}>
                       <CIcon icon={cilPencil} />
                     </CButton>
-                    <CButton color="danger" variant="ghost" size="sm" className="rounded-pill ms-2" title="Eliminar" onClick={() => { setClienteToDelete(c.id); setModalDeleteVisible(true); }}>
+                    <CButton color="danger" variant="ghost" size="sm" onClick={() => { setClienteToDelete(c.id); setModalDeleteVisible(true); }}>
                       <CIcon icon={cilTrash} />
                     </CButton>
                   </CTableDataCell>
@@ -276,10 +259,11 @@ const ClientesCoreUI = () => {
             </CTableBody>
           </CTable>
 
+          {/* PAGINACIÓN INTELIGENTE */}
           {!loading && totalPages > 1 && (
             <div className="d-flex justify-content-between align-items-center mt-4">
               <div className="text-muted small">
-                Mostrando {clientes.length} de {totalRecords} registros
+                Página {currentPage} de {totalPages} ({totalRecords} clientes)
               </div>
               <CPagination align="end" className="mb-0">
                 <CPaginationItem 
@@ -289,17 +273,35 @@ const ClientesCoreUI = () => {
                 >
                   <CIcon icon={cilChevronLeft} />
                 </CPaginationItem>
-                
-                {[...Array(totalPages)].map((_, i) => (
-                  <CPaginationItem 
-                    key={i + 1}
-                    active={currentPage === i + 1}
-                    onClick={() => setCurrentPage(i + 1)}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    {i + 1}
-                  </CPaginationItem>
-                ))}
+
+                {(() => {
+                  const pages = [];
+                  const leftSide = Math.max(1, currentPage - 1);
+                  const rightSide = Math.min(totalPages, currentPage + 1);
+
+                  pages.push(
+                    <CPaginationItem key={1} active={currentPage === 1} onClick={() => setCurrentPage(1)}>1</CPaginationItem>
+                  );
+
+                  if (leftSide > 2) pages.push(<CPaginationItem key="dots-l" disabled>...</CPaginationItem>);
+
+                  for (let i = leftSide; i <= rightSide; i++) {
+                    if (i !== 1 && i !== totalPages) {
+                      pages.push(
+                        <CPaginationItem key={i} active={currentPage === i} onClick={() => setCurrentPage(i)}>{i}</CPaginationItem>
+                      );
+                    }
+                  }
+
+                  if (rightSide < totalPages - 1) pages.push(<CPaginationItem key="dots-r" disabled>...</CPaginationItem>);
+
+                  if (totalPages > 1) {
+                    pages.push(
+                      <CPaginationItem key={totalPages} active={currentPage === totalPages} onClick={() => setCurrentPage(totalPages)}>{totalPages}</CPaginationItem>
+                    );
+                  }
+                  return pages;
+                })()}
 
                 <CPaginationItem 
                   disabled={currentPage === totalPages} 
@@ -315,156 +317,64 @@ const ClientesCoreUI = () => {
       </CCard>
 
       {/* MODAL FORMULARIO */}
-      <CModal
-        visible={modalVisible}
-        onClose={handleCancel}
-        size="lg"
-        alignment="center"
-        backdrop="static"
-      >
-        <CForm
-          noValidate
-          validated={validated}
-          onSubmit={handleSubmit}
-          className="overflow-visible"
-        >
-          <CModalHeader className="bg-primary text-white border-0 py-3">
-            <CModalTitle className="fw-bold text-white m-0 fs-5">
-              {updateData ? 'Editar Cliente' : 'Nuevo Cliente'}
-            </CModalTitle>
+      <CModal visible={modalVisible} onClose={handleCancel} size="lg" alignment="center" backdrop="static">
+        <CForm noValidate validated={validated} onSubmit={handleSubmit}>
+          <CModalHeader className="bg-primary text-white">
+            <CModalTitle>{updateData ? 'Editar Cliente' : 'Nuevo Cliente'}</CModalTitle>
           </CModalHeader>
-
           <CModalBody className="p-4">
-              <CRow className="g-4">
-                <CCol md={6}>
-                  <CFormLabel className="fw-bold text-muted small mb-2 ms-1">Identificación *</CFormLabel>
-                  <CFormInput
-                    name="identificacion"
-                    value={formData.identificacion}
-                    onChange={handleChange}
-                    required
-                    disabled={!!updateData}
-                    placeholder="Ej: V-12345678"
-                    className="border shadow-sm py-2 px-3"
-                    style={{ borderRadius: '12px', fontSize: '0.95rem' }}
-                    invalid={idError || (validated && !formData.identificacion.trim())}
-                  />
-                  <CFormFeedback invalid>
-                    {idError ? 'Ya existe un cliente con esta identificación.' : 'La identificación es obligatoria.'}
-                  </CFormFeedback>
-                </CCol>
-
-                <CCol md={6}>
-                  <CFormLabel className="fw-bold text-muted small mb-2 ms-1">Nombre Completo *</CFormLabel>
-                  <CFormInput
-                    name="nombre"
-                    value={formData.nombre}
-                    onChange={handleChange}
-                    required
-                    placeholder="Juan Pérez"
-                    className="border shadow-sm py-2 px-3"
-                    style={{ borderRadius: '12px', fontSize: '0.95rem' }}
-                    invalid={validated && !formData.nombre.trim()}
-                  />
-                  <CFormFeedback invalid>El nombre es obligatorio.</CFormFeedback>
-                </CCol>
-
-                <CCol md={6}>
-                  <CFormLabel className="fw-bold text-muted small mb-2 ms-1">Teléfono</CFormLabel>
-                  <CFormInput
-                    name="telefono"
-                    value={formData.telefono}
-                    onChange={handleChange}
-                    placeholder="+5804147189362"
-                    className="border shadow-sm py-2 px-3"
-                    style={{ borderRadius: '12px', fontSize: '0.95rem' }}
-                  />
-                </CCol>
-
-                <CCol md={6}>
-                  <CFormLabel className="fw-bold text-muted small mb-2 ms-1">Correo Electrónico</CFormLabel>
-                  <CFormInput
-                    type="email"
-                    name="email"
-                    value={formData.email}
-                    onChange={handleChange}
-                    placeholder="usuario@correo.com"
-                    className="border shadow-sm py-2 px-3"
-                    style={{ borderRadius: '12px', fontSize: '0.95rem' }}
-                  />
-                </CCol>
-
-                <CCol md={12}>
-                  <CFormLabel className="fw-bold text-muted small mb-2 ms-1">Dirección</CFormLabel>
-                  <CFormInput
-                    name="direccion"
-                    value={formData.direccion}
-                    onChange={handleChange}
-                    placeholder="Av. Principal, Ciudad, País"
-                    className="border shadow-sm py-2 px-3"
-                    style={{ borderRadius: '12px', fontSize: '0.95rem' }}
-                  />
-                </CCol>
-              </CRow>
+            <CRow className="g-4">
+              <CCol md={6}>
+                <CFormLabel className="fw-bold small ms-1">Identificación *</CFormLabel>
+                <CFormInput
+                  name="identificacion"
+                  value={formData.identificacion}
+                  onChange={handleChange}
+                  required
+                  disabled={!!updateData}
+                  placeholder="Ej: V-12345678"
+                  invalid={idError}
+                />
+                <CFormFeedback invalid>La identificación ya existe o es requerida.</CFormFeedback>
+              </CCol>
+              <CCol md={6}>
+                <CFormLabel className="fw-bold small ms-1">Nombre Completo *</CFormLabel>
+                <CFormInput name="nombre" value={formData.nombre} onChange={handleChange} required />
+              </CCol>
+              <CCol md={6}>
+                <CFormLabel className="fw-bold small ms-1">Teléfono</CFormLabel>
+                <CFormInput name="telefono" value={formData.telefono} onChange={handleChange} />
+              </CCol>
+              <CCol md={6}>
+                <CFormLabel className="fw-bold small ms-1">Correo</CFormLabel>
+                <CFormInput type="email" name="email" value={formData.email} onChange={handleChange} />
+              </CCol>
+              <CCol md={12}>
+                <CFormLabel className="fw-bold small ms-1">Dirección</CFormLabel>
+                <CFormInput name="direccion" value={formData.direccion} onChange={handleChange} />
+              </CCol>
+            </CRow>
           </CModalBody>
-
-          <CModalFooter className="border-0 p-4 pt-2 d-flex gap-3 bg-body-secondary">
-            <CButton
-              type="button"
-              color="secondary"
-              variant="ghost"
-              className="flex-grow-1 py-2 fw-bold"
-              style={{ borderRadius: '12px' }}
-              onClick={handleCancel}
-            >
-              Cancelar
-            </CButton>
-            <CButton
-              type="submit"
-              color="primary"
-              className="flex-grow-1 py-2 fw-bold text-white shadow-sm"
-              style={{ borderRadius: '12px' }}
-              disabled={submitting}
-            >
-              {submitting ? <CSpinner size="sm" /> : 'Guardar'}
-            </CButton>
+          <CModalFooter className="bg-body-secondary p-4">
+            <CButton color="secondary" variant="ghost" onClick={handleCancel}>Cancelar</CButton>
+            <CButton type="submit" color="primary" disabled={submitting}>Guardar</CButton>
           </CModalFooter>
         </CForm>
       </CModal>
 
       {/* MODAL ELIMINAR */}
-      <CModal
-        visible={modalDeleteVisible}
-        onClose={() => setModalDeleteVisible(false)}
-        alignment="center"
-        backdrop="static"
-      >
+      <CModal visible={modalDeleteVisible} onClose={() => setModalDeleteVisible(false)} alignment="center" backdrop="static">
         <CModalHeader className="bg-primary text-white border-0 py-3">
           <CModalTitle className="fw-bold text-white m-0 fs-5">Confirmar eliminación</CModalTitle>
         </CModalHeader>
         <CModalBody className="text-center p-4">
           <CIcon icon={cilTrash} size="xl" className="text-danger mb-2" />
-          <h6 className="fw-bold mb-1">¿Eliminar cliente?</h6>
-          <p className="text-muted small mb-0">Esta acción es permanente y no podrá revertirse.</p>
+          <h6 className="fw-bold">¿Eliminar este cliente?</h6>
+          <p className="text-muted small">Esta acción no se puede revertir.</p>
         </CModalBody>
-        <CModalFooter className="border-0 p-4 pt-0 d-flex gap-3 bg-body-secondary">
-          <CButton
-            color="secondary"
-            variant="ghost"
-            className="flex-grow-1 py-2 fw-bold"
-            style={{ borderRadius: '12px' }}
-            onClick={() => setModalDeleteVisible(false)}
-          >
-            Cancelar
-          </CButton>
-          <CButton
-            color="danger"
-            className="flex-grow-1 py-2 fw-bold text-white shadow-sm"
-            style={{ borderRadius: '12px' }}
-            onClick={confirmDelete}
-          >
-            Eliminar
-          </CButton>
+        <CModalFooter className="bg-body-secondary p-4">
+          <CButton color="secondary" variant="ghost" onClick={() => setModalDeleteVisible(false)}>Cancelar</CButton>
+          <CButton color="danger" className="text-white" onClick={confirmDelete}>Eliminar</CButton>
         </CModalFooter>
       </CModal>
     </CContainer>

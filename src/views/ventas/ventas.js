@@ -9,38 +9,41 @@ import {
 import { CIcon } from '@coreui/icons-react'; 
 import { 
   cilPlus, cilSearch, cilTrash, cilChevronBottom, cilChevronTop, 
-  cilChevronLeft, cilChevronRight, cilDollar, cilNotes, cilCalendar
+  cilChevronLeft, cilChevronRight, cilDollar, cilCalendar
 } from '@coreui/icons'; 
 import { createClient } from "../../../supabase/client"; 
 import { toast } from "sonner"; 
+import Select from 'react-select';
 
 const VentasCoreUI = () => {
   const supabase = createClient();
 
-  // Estados de Datos
+  // --- Estados de Datos ---
   const [ventas, setVentas] = useState([]);
   const [productos, setProductos] = useState([]);
   const [clientes, setClientes] = useState([]); 
   
-  // Estados de Paginación
+  // --- Estados de Paginación y Filtros (Lógica Unificada) ---
   const [currentPage, setCurrentPage] = useState(1);
   const [totalRecords, setTotalRecords] = useState(0);
   const PAGE_SIZE = 8;
+  const [filters, setFilters] = useState({
+    search: '',
+  });
 
-  // Estados de UI
-  const [searchTerm, setSearchTerm] = useState('');
+  // --- Estados de UI ---
   const [loading, setLoading] = useState(false);
   const [expandedRows, setExpandedRows] = useState([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [validated, setValidated] = useState(false);
 
-  // Estados del formulario
+  // --- Estados del formulario ---
   const [clienteId, setClienteId] = useState('');
   const [notas, setNotas] = useState('');
   const [items, setItems] = useState([]); 
   const [esCredito, setEsCredito] = useState(false);
   const [fechaVencimiento, setFechaVencimiento] = useState(''); 
-  const [tipoPago, setTipoPago] = useState('efectivo'); // <-- NUEVO ESTADO
+  const [tipoPago, setTipoPago] = useState('efectivo');
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -48,19 +51,20 @@ const VentasCoreUI = () => {
       const from = (currentPage - 1) * PAGE_SIZE;
       const to = from + PAGE_SIZE - 1;
 
+      // 1. Consultamos a la VISTA 'ventas_con_detalles'
       let query = supabase
-        .from("ventas_salidas")
+        .from("ventas_con_detalles")
         .select(`
           *,
-          clientes ( nombre ),
           ventas_detalle (
             id, producto_id, cantidad, precio_unitario, subtotal,
             productos ( nombre, sku )
           )
         `, { count: 'exact' });
 
-      if (searchTerm) {
-        query = query.or(`notas.ilike.%${searchTerm}%`);
+      // 2. Lógica de filtrado adaptada (Busca en nombre de cliente, RIF y notas)
+      if (filters.search) {
+        query = query.or(`nombre_cliente.ilike.%${filters.search}%, cliente_rif.ilike.%${filters.search}%, notas.ilike.%${filters.search}%`);
       }
 
       const { data: ventasData, count, error: ventasError } = await query
@@ -69,6 +73,7 @@ const VentasCoreUI = () => {
 
       if (ventasError) throw ventasError;
 
+      // Carga de catálogos para el formulario
       const { data: productosData } = await supabase
         .from("productos")
         .select("*")
@@ -89,7 +94,7 @@ const VentasCoreUI = () => {
     } finally {
       setLoading(false);
     }
-  }, [supabase, currentPage, searchTerm]);
+  }, [supabase, currentPage, filters]);
 
   useEffect(() => {
     fetchData();
@@ -97,14 +102,13 @@ const VentasCoreUI = () => {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm]);
+  }, [filters]);
 
-  // --- Lógica de Cambio de Precios Dinámicos ---
+  // --- Lógica de Carrito y Precios ---
   const handleToggleCredito = (checked) => {
     setEsCredito(checked);
     if (!checked) setFechaVencimiento('');
 
-    // Actualizar precios de items existentes en el carrito
     const updatedItems = items.map(item => {
       const prodOriginal = productos.find(p => p.id === item.producto_id);
       return {
@@ -117,16 +121,15 @@ const VentasCoreUI = () => {
     setItems(updatedItems);
   };
 
-  // --- Lógica de Carrito ---
   const addItem = (productoId) => {
     const producto = productos.find((p) => String(p.id) === String(productoId));
-    if (!producto) return;
+    if (!producto) return false;
+    
     if (items.some((i) => i.producto_id === producto.id)) {
       toast.warning("El producto ya está en el carrito");
-      return;
+      return false;
     }
 
-    // Seleccionar precio según el modo de venta
     const precioActual = esCredito ? Number(producto.precio_credito) : Number(producto.precio_venta);
 
     setItems([...items, {
@@ -136,6 +139,7 @@ const VentasCoreUI = () => {
       precio_unitario: precioActual,
       max_stock: producto.stock_actual
     }]);
+    return true; 
   };
 
   const updateItem = (index, field, value) => {
@@ -150,10 +154,9 @@ const VentasCoreUI = () => {
     e.preventDefault();
     setValidated(true);
 
-    // Validaciones extra
     if (!clienteId || items.length === 0) return;
     if (esCredito && !fechaVencimiento) {
-      toast.error("Debe especificar una fecha de vencimiento para ventas a crédito");
+      toast.error("Debe especificar una fecha de vencimiento");
       return;
     }
 
@@ -171,7 +174,7 @@ const VentasCoreUI = () => {
         p_items: p_items_json,
         p_es_credito: esCredito,
         p_fecha_vencimiento: esCredito ? fechaVencimiento : null,
-        p_tipo_pago: tipoPago // <-- NUEVO PARÁMETRO ENVIADO AL RPC
+        p_tipo_pago: tipoPago 
       });
 
       if (error) throw error;
@@ -180,7 +183,7 @@ const VentasCoreUI = () => {
       handleCancel();
       fetchData();
     } catch (error) {
-      toast.error("Error al registrar venta", { description: error.message });
+      toast.error("Error al registrar", { description: error.message });
     } finally {
       setLoading(false);
     }
@@ -192,16 +195,38 @@ const VentasCoreUI = () => {
     setItems([]);
     setEsCredito(false);
     setFechaVencimiento('');
-    setTipoPago('efectivo'); // <-- RESETEO DEL NUEVO ESTADO
+    setTipoPago('efectivo');
     setModalVisible(false);
     setValidated(false);
   };
 
   const totalPages = Math.ceil(totalRecords / PAGE_SIZE);
 
+  // --- Configuraciones de Selects ---
+  const productOptions = productos.map(p => ({
+    value: p.id,
+    label: `${p.nombre} (Stock: ${p.stock_actual}) - $${esCredito ? p.precio_credito : p.precio_venta}`
+  }));
+
+  const clientOptions = clientes.map(c => ({
+    value: c.id,
+    label: `${c.nombre} ${c.identificacion ? `(${c.identificacion})` : ''}`
+  }));
+
+  const customSelectStyles = {
+    control: (base) => ({
+      ...base,
+      borderRadius: '50rem',
+      borderColor: '#dee2e6',
+      padding: '2px',
+      boxShadow: 'none',
+      '&:hover': { borderColor: '#b3d7ff' }
+    })
+  };
+
   return (
     <CContainer fluid className="px-4">
-      {/* CABECERA */}
+      {/* HEADER */}
       <CCard className="mb-4 shadow-lg border-0 overflow-hidden w-100" style={{ borderRadius: '16px' }}>
         <CCardHeader className="bg-primary text-white py-3">
           <h2 className="fw-bold text-white d-flex align-items-center m-0 fs-4 text-uppercase">
@@ -211,17 +236,17 @@ const VentasCoreUI = () => {
         </CCardHeader>
       </CCard>
 
-      {/* TABLA PRINCIPAL */}
+      {/* FILTROS Y BUSQUEDA */}
       <CCard className="mb-4 shadow-lg border-0" style={{ borderRadius: '16px' }}>
         <CCardHeader className="py-3 border-bottom-0">
           <div className="d-flex justify-content-between align-items-center">
             <div className="d-flex bg-body-secondary align-items-center rounded-pill px-3 py-1" style={{ width: '400px' }}>
               <CIcon icon={cilSearch} className="text-muted me-2" />
               <CFormInput
-                placeholder="Buscar por notas..."
+                placeholder="Buscar cliente, identificación o notas..."
                 className="border-0 bg-transparent shadow-none"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                value={filters.search}
+                onChange={(e) => setFilters({ ...filters, search: e.target.value })}
               />
             </div>
             <CButton color="success" className="text-white rounded-pill px-4" onClick={() => setModalVisible(true)}>
@@ -244,17 +269,9 @@ const VentasCoreUI = () => {
             </CTableHead>
             <CTableBody>
               {loading ? (
-                <CTableRow>
-                  <CTableDataCell colSpan="6" className="text-center py-5">
-                    <CSpinner color="primary" />
-                  </CTableDataCell>
-                </CTableRow>
+                <CTableRow><CTableDataCell colSpan="6" className="text-center py-5"><CSpinner color="primary" /></CTableDataCell></CTableRow>
               ) : ventas.length === 0 ? (
-                <CTableRow>
-                  <CTableDataCell colSpan="6" className="text-center py-5 text-muted">
-                    No se encontraron registros
-                  </CTableDataCell>
-                </CTableRow>
+                <CTableRow><CTableDataCell colSpan="6" className="text-center py-5 text-muted">No se encontraron registros</CTableDataCell></CTableRow>
               ) : ventas.map((v) => (
                 <Fragment key={v.id}>
                   <CTableRow 
@@ -265,22 +282,14 @@ const VentasCoreUI = () => {
                       <CIcon icon={expandedRows.includes(v.id) ? cilChevronTop : cilChevronBottom} className="text-primary" />
                     </CTableDataCell>
                     <CTableDataCell>
-                      <div className="small fw-bold">
-                        {new Date(v.created_at).toLocaleDateString('es-ES', {
-                          day: '2-digit',
-                          month: '2-digit',
-                          year: 'numeric'
-                        })}
-                      </div>
-                      <div className="text-muted" style={{ fontSize: '0.75rem' }}>
-                        {new Date(v.created_at).toLocaleTimeString('es-ES', { 
-                          hour: '2-digit', 
-                          minute: '2-digit', 
-                          hour12: true 
-                        })}
-                      </div>
+                      <div className="small fw-bold">{new Date(v.created_at).toLocaleDateString('es-ES')}</div>
+                      <div className="text-muted small">{new Date(v.created_at).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', hour12: true })}</div>
                     </CTableDataCell>
-                    <CTableDataCell><strong>{v.clientes?.nombre || 'Venta General'}</strong></CTableDataCell>
+                    {/* USO DE LOS CAMPOS DE LA VISTA */}
+                    <CTableDataCell>
+                      <div className="fw-bold">{v.nombre_cliente || 'Venta General'}</div>
+                      <div className="text-muted extra-small">{v.cliente_rif}</div>
+                    </CTableDataCell>
                     <CTableDataCell>
                       <CBadge color={v.es_credito ? 'warning' : 'info'} shape="rounded-pill">
                         {v.es_credito ? 'CRÉDITO' : 'CONTADO'}
@@ -290,6 +299,7 @@ const VentasCoreUI = () => {
                     <CTableDataCell className="text-end text-truncate" style={{ maxWidth: '150px' }}>{v.notas}</CTableDataCell>
                   </CTableRow>
                   
+                  {/* DETALLE EXPANDIBLE */}
                   {expandedRows.includes(v.id) && (
                     <CTableRow>
                       <CTableDataCell colSpan="6" className="bg-body-secondary p-3">
@@ -320,14 +330,13 @@ const VentasCoreUI = () => {
                           <CCol md={4}>
                             <h6 className="small fw-bold text-muted">INFORMACIÓN ADICIONAL</h6>
                             <div className="p-2 border rounded bg-body">
-                                {/* VISUALIZACIÓN DEL NUEVO CAMPO EN DETALLES */}
                                 <div className="mb-2 text-info small">
                                   <strong>Método de pago:</strong> <span className="text-uppercase fw-bold">{v.tipo_pago || 'N/A'}</span>
                                 </div>
                                 {v.es_credito && (
                                     <div className="mb-2 text-danger small">
                                         <CIcon icon={cilCalendar} className="me-1"/> 
-                                        <strong>Vence:</strong> {v.fecha_vencimiento ? new Date(v.fecha_vencimiento + 'T12:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: '2-digit' }) : 'N/A'}
+                                        <strong>Vence:</strong> {v.fecha_vencimiento ? new Date(v.fecha_vencimiento + 'T12:00:00').toLocaleDateString() : 'N/A'}
                                     </div>
                                 )}
                                 <p className="small mb-0 text-muted">{v.notas || 'Sin notas'}</p>
@@ -342,40 +351,60 @@ const VentasCoreUI = () => {
             </CTableBody>
           </CTable>
 
-          {/* Bloque de Paginación */}
-          {!loading && totalPages > 1 && (
-            <div className="d-flex justify-content-between align-items-center mt-4">
-              <div className="text-muted small">
-                Mostrando {ventas.length} de {totalRecords} registros
-              </div>
-              <CPagination align="end" className="mb-0">
-                <CPaginationItem 
-                  disabled={currentPage === 1} 
-                  onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                  style={{ cursor: 'pointer' }}
-                >
-                  <CIcon icon={cilChevronLeft} />
-                </CPaginationItem>
-                {[...Array(totalPages)].map((_, i) => (
-                  <CPaginationItem
-                    key={i + 1}
-                    active={currentPage === i + 1}
-                    onClick={() => setCurrentPage(i + 1)}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    {i + 1}
-                  </CPaginationItem>
-                ))}
-                <CPaginationItem 
-                  disabled={currentPage === totalPages} 
-                  onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                  style={{ cursor: 'pointer' }}
-                >
-                  <CIcon icon={cilChevronRight} />
-                </CPaginationItem>
-              </CPagination>
-            </div>
-          )}
+          {/* PAGINACIÓN INTELIGENTE */}
+                    {!loading && totalPages > 1 && (
+                      <div className="d-flex justify-content-between align-items-center mt-4">
+                        <div className="text-muted small">
+                          Página {currentPage} de {totalPages} ({totalRecords} clientes)
+                        </div>
+                        <CPagination align="end" className="mb-0">
+                          <CPaginationItem 
+                            disabled={currentPage === 1} 
+                            onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                            style={{ cursor: 'pointer' }}
+                          >
+                            <CIcon icon={cilChevronLeft} />
+                          </CPaginationItem>
+          
+                          {(() => {
+                            const pages = [];
+                            const leftSide = Math.max(1, currentPage - 1);
+                            const rightSide = Math.min(totalPages, currentPage + 1);
+          
+                            pages.push(
+                              <CPaginationItem key={1} active={currentPage === 1} onClick={() => setCurrentPage(1)}>1</CPaginationItem>
+                            );
+          
+                            if (leftSide > 2) pages.push(<CPaginationItem key="dots-l" disabled>...</CPaginationItem>);
+          
+                            for (let i = leftSide; i <= rightSide; i++) {
+                              if (i !== 1 && i !== totalPages) {
+                                pages.push(
+                                  <CPaginationItem key={i} active={currentPage === i} onClick={() => setCurrentPage(i)}>{i}</CPaginationItem>
+                                );
+                              }
+                            }
+          
+                            if (rightSide < totalPages - 1) pages.push(<CPaginationItem key="dots-r" disabled>...</CPaginationItem>);
+          
+                            if (totalPages > 1) {
+                              pages.push(
+                                <CPaginationItem key={totalPages} active={currentPage === totalPages} onClick={() => setCurrentPage(totalPages)}>{totalPages}</CPaginationItem>
+                              );
+                            }
+                            return pages;
+                          })()}
+          
+                          <CPaginationItem 
+                            disabled={currentPage === totalPages} 
+                            onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                            style={{ cursor: 'pointer' }}
+                          >
+                            <CIcon icon={cilChevronRight} />
+                          </CPaginationItem>
+                        </CPagination>
+                      </div>
+                    )}
         </CCardBody>
       </CCard>
 
@@ -389,22 +418,15 @@ const VentasCoreUI = () => {
             <CRow className="mb-3">
               <CCol md={6}>
                 <CFormLabel className="fw-bold text-muted small mb-2">Cliente *</CFormLabel>
-                <CFormSelect
-                  value={clienteId}
-                  onChange={e => {
-                    setClienteId(e.target.value);
-                    if(e.target.value === '00000000-0000-0000-0000-000000000001') handleToggleCredito(false);
-                  }}
-                  required
-                  className="rounded-pill"
-                >
-                  <option value="">Seleccione un cliente...</option>
-                  {clientes.map(c => (
-                    <option key={c.id} value={c.id}>{c.nombre}</option>
-                  ))}
-                </CFormSelect>
+                <Select
+                  options={clientOptions}
+                  value={clientOptions.find(opt => opt.value === clienteId) || null}
+                  placeholder="Seleccione un cliente..."
+                  isSearchable
+                  onChange={(option) => setClienteId(option ? option.value : '')}
+                  styles={customSelectStyles}
+                />
               </CCol>
-              
               <CCol md={3} className="d-flex align-items-end">
                 <div className="p-2 border w-100 bg-body-secondary rounded-pill d-flex align-items-center justify-content-center" style={{ height: '38px' }}>
                   <CFormSwitch
@@ -412,33 +434,20 @@ const VentasCoreUI = () => {
                     id="es_credito"
                     checked={esCredito}
                     onChange={(e) => handleToggleCredito(e.target.checked)}
-                    disabled={!clienteId || clienteId === '00000000-0000-0000-0000-000000000001'}
+                    disabled={!clienteId}
                   />
                 </div>
               </CCol>
-
               <CCol md={3}>
                 <CFormLabel className="fw-bold text-muted small mb-2">Plazo Pago</CFormLabel>
-                <CFormInput
-                  type="date"
-                  value={fechaVencimiento}
-                  onChange={e => setFechaVencimiento(e.target.value)}
-                  disabled={!esCredito}
-                  required={esCredito}
-                  className="rounded-pill"
-                />
+                <CFormInput type="date" value={fechaVencimiento} onChange={e => setFechaVencimiento(e.target.value)} disabled={!esCredito} required={esCredito} className="rounded-pill" />
               </CCol>
             </CRow>
 
-            {/* NUEVO CAMPO: MÉTODO DE PAGO */}
             <CRow className="mb-3">
               <CCol md={6}>
                 <CFormLabel className="fw-bold text-muted small mb-2">Tipo de Pago *</CFormLabel>
-                <CFormSelect
-                  value={tipoPago}
-                  onChange={e => setTipoPago(e.target.value)}
-                  className="rounded-pill"
-                >
+                <CFormSelect value={tipoPago} onChange={e => setTipoPago(e.target.value)} className="rounded-pill">
                   <option value="efectivo">Efectivo</option>
                   <option value="pago movil">Pago Móvil</option>
                   <option value="transferencia">Transferencia</option>
@@ -448,15 +457,16 @@ const VentasCoreUI = () => {
             </CRow>
 
             <div className="bg-body-tertiary p-3 rounded mb-3 border" style={{ borderRadius: '12px' }}>
-              <h6 className="fw-bold text-muted small mb-2">Agregar Productos (Precios en {esCredito ? 'Crédito' : 'Contado'})</h6>
-              <CFormSelect onChange={(e) => addItem(e.target.value)} className="mb-3 rounded-pill">
-                <option value="">Seleccione un repuesto...</option>
-                {productos.map(p => (
-                  <option key={p.id} value={p.id}>
-                    {p.nombre} (Stock: {p.stock_actual}) - ${esCredito ? p.precio_credito : p.precio_venta}
-                  </option>
-                ))}
-              </CFormSelect>
+              <h6 className="fw-bold text-muted small mb-2">Agregar Productos</h6>
+              <Select
+                className="mb-3 bg-body-secondary"
+                options={productOptions}
+                value={null} 
+                placeholder="Escribe para buscar un repuesto..."
+                isSearchable
+                onChange={(opt) => opt && addItem(opt.value)}
+                styles={customSelectStyles}
+              />
 
               <CTable small borderless className="align-middle mb-0">
                 <thead>
@@ -472,18 +482,11 @@ const VentasCoreUI = () => {
                     <tr key={index}>
                       <td className="small py-2">{item.nombre}</td>
                       <td>
-                        <CFormInput
-                          type="number"
-                          size="sm"
-                          value={item.cantidad}
-                          onChange={e => updateItem(index, 'cantidad', parseInt(e.target.value) || 0)}
-                        />
+                        <CFormInput type="number" size="sm" value={item.cantidad} onChange={e => updateItem(index, 'cantidad', parseInt(e.target.value) || 0)} />
                       </td>
                       <td className="text-end fw-bold small">${(item.cantidad * item.precio_unitario).toFixed(2)}</td>
                       <td>
-                        <CButton color="danger" variant="ghost" size="sm" onClick={() => setItems(items.filter((_, i) => i !== index))}>
-                          <CIcon icon={cilTrash} />
-                        </CButton>
+                        <CButton color="danger" variant="ghost" size="sm" onClick={() => setItems(items.filter((_, i) => i !== index))}><CIcon icon={cilTrash} /></CButton>
                       </td>
                     </tr>
                   ))}
@@ -494,13 +497,8 @@ const VentasCoreUI = () => {
               </div>
             </div>
 
-            <CFormLabel className="fw-bold text-muted small mb-2">Notas / Nro. Referencia</CFormLabel>
-            <CFormInput
-              value={notas}
-              onChange={e => setNotas(e.target.value)}
-              placeholder="Ej. Pendiente de entrega / 000012230..."
-              className="rounded-pill px-3"
-            />
+            <CFormLabel className="fw-bold text-muted small mb-2">Notas / Referencia</CFormLabel>
+            <CFormInput value={notas} onChange={e => setNotas(e.target.value)} placeholder="Ej. Pago movil ref 1234" className="rounded-pill px-3" />
           </CModalBody>
           <CModalFooter className="border-0 p-4 pt-0 d-flex gap-3 bg-body-secondary">
             <CButton type="button" color="secondary" variant="ghost" className="flex-grow-1" onClick={handleCancel}>Cancelar</CButton>

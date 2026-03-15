@@ -6,11 +6,9 @@ import {
 } from '@coreui/react';
 import { CIcon } from '@coreui/icons-react';
 import {
-  cilDollar, cilTags, cilWarning, cilCreditCard, cilUser, cilChatBubble, cilEnvelopeClosed,
-  cibWhatsapp,
-  cibGmail,
-  cilChartLine // Icono para ganancias
+  cilDollar, cilTags, cilWarning, cilCreditCard, cilChartLine, cilCheckCircle
 } from '@coreui/icons';
+import { cibWhatsapp, cibGmail } from '@coreui/icons';
 import { createClient } from "../../../supabase/client"; 
 import { toast } from "sonner";
 import { open } from '@tauri-apps/plugin-shell';
@@ -20,9 +18,10 @@ const Dashboard = () => {
 
   const [metricas, setMetricas] = useState({
     totalVentas: 0,
+    totalContado: 0, // Nueva métrica
     totalCobrar: 0,
     valorInventario: 0,
-    gananciaInventario: 0, // Nueva métrica
+    gananciaInventario: 0,
     productosBajoStock: 0
   });
   
@@ -34,14 +33,14 @@ const Dashboard = () => {
     setLoading(true);
     try {
       const [ventasRes, cobrarRes, productosRes] = await Promise.all([
-        supabase.from('ventas_salidas').select('total'),
+        // Agregamos es_credito para diferenciar contado de crédito
+        supabase.from('ventas_salidas').select('total, es_credito'),
         supabase.from('cuentas_por_cobrar').select(`
           saldo_pendiente, 
           created_at, 
           fecha_vencimiento,
           clientes ( nombre, telefono, email )
         `),
-        // Se agregó precio_venta a la selección
         supabase.from('productos').select('stock_actual, precio_costo, precio_venta')
       ]);
 
@@ -49,7 +48,14 @@ const Dashboard = () => {
       if (cobrarRes.error) throw cobrarRes.error;
       if (productosRes.error) throw productosRes.error;
 
+      // Cálculo de Ventas Totales
       const totalVentasCalc = ventasRes.data.reduce((acc, curr) => acc + Number(curr.total || 0), 0);
+      
+      // Cálculo de Ventas al Contado (Donde es_credito es false)
+      const totalContadoCalc = ventasRes.data
+        .filter(v => !v.es_credito)
+        .reduce((acc, curr) => acc + Number(curr.total || 0), 0);
+
       const totalCobrarCalc = cobrarRes.data.reduce((acc, curr) => acc + Number(curr.saldo_pendiente || 0), 0);
       
       let valorInvCalc = 0;
@@ -62,7 +68,7 @@ const Dashboard = () => {
         const venta = Number(prod.precio_venta || 0);
 
         valorInvCalc += (stock * costo);
-        gananciaInvCalc += (stock * (venta - costo)); // Cálculo de ganancia potencial
+        gananciaInvCalc += (stock * (venta - costo));
         if (stock < 3) bajoStockCalc++;
       });
 
@@ -100,6 +106,7 @@ const Dashboard = () => {
 
       setMetricas({
         totalVentas: totalVentasCalc,
+        totalContado: totalContadoCalc,
         totalCobrar: totalCobrarCalc,
         valorInventario: valorInvCalc,
         gananciaInventario: gananciaInvCalc,
@@ -151,12 +158,12 @@ const Dashboard = () => {
   };
 
   const StatCard = ({ title, value, icon, color, isCurrency = true }) => (
-    <CCol xs={12} sm={6} lg={3} className="mb-4">
+    <CCol xs={12} sm={6} lg={4} className="mb-4">
       <CCard 
         className={`h-100 shadow-sm border-top-0 border-end-0 border-bottom-0 border-start border-4 border-${color}`} 
         style={{ borderRadius: '12px' }}
       >
-        <CCardBody className="d-flex align-items-center justify-content-between p-3 p-md-3">
+        <CCardBody className="d-flex align-items-center justify-content-between p-3">
           <div className="flex-grow-1 me-1" style={{ minWidth: 0 }}>
             <div className="text-muted fw-bold mb-1" style={{ fontSize: '0.7rem', textTransform: 'uppercase', minHeight: '34px', display: 'flex', alignItems: 'center' }}>
               {title}
@@ -184,11 +191,15 @@ const Dashboard = () => {
 
       <CRow className="align-items-stretch">
         <StatCard title="Ingresos Totales (Ventas)" value={metricas.totalVentas} icon={cilDollar} color="success" />
+        <StatCard title="Ventas al Contado" value={metricas.totalContado} icon={cilCheckCircle} color="dark" />
         <StatCard title="Cuentas por Cobrar" value={metricas.totalCobrar} icon={cilCreditCard} color="warning" />
-        <StatCard title="Inversión en inventario" value={metricas.valorInventario} icon={cilTags} color="indigo" />
-        <StatCard title="Ganancia Proyectada" value={metricas.gananciaInventario} icon={cilChartLine} color="info" />
       </CRow>
-        <StatCard title="Alertas de Stock (-3)" value={metricas.productosBajoStock} icon={cilWarning} color="danger" />
+
+      <CRow className="align-items-stretch">
+        <StatCard title="Inversión en Inventario" value={metricas.valorInventario} icon={cilTags} color="indigo" />
+        <StatCard title="Ganancia Proyectada" value={metricas.gananciaInventario} icon={cilChartLine} color="info" />
+        <StatCard title="Alertas de Stock (-3)" value={metricas.productosBajoStock} icon={cilWarning} color="danger" isCurrency={false} />
+      </CRow>
 
       <CRow className="mt-2">
         <CCol xs={12}>

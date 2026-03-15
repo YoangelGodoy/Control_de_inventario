@@ -14,7 +14,7 @@ import {
 } from '@coreui/icons'
 import CIcon from '@coreui/icons-react'
 import { useNavigate } from 'react-router-dom';
-import avatar8 from './../../assets/images/avatars/8.jpg'
+import avatar8 from './../../assets/images/avatars/8.png'
 import { createClient } from '../../../supabase/client';
 
 const AppHeaderDropdown = () => {

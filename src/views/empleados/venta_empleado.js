@@ -3,12 +3,11 @@ import {
   CButton, CCard, CCardBody, CCardHeader, CCol, CRow, CContainer, 
   CTable, CTableHead, CTableRow, CTableHeaderCell, CTableBody, 
   CTableDataCell, CFormSelect, CFormInput, CSpinner, CFormLabel,
-  CFormCheck, CFormTextarea, CBadge, CFormFeedback
+  CFormCheck, CFormTextarea, CBadge
 } from '@coreui/react';
 import { CIcon } from '@coreui/icons-react';
 import { 
-  cilCart, cilCheckCircle, cilTrash, cilUser, 
-  cilWallet, cilNotes, cilWarning 
+  cilCart, cilCheckCircle, cilTrash, cilWallet, cilWarning 
 } from '@coreui/icons';
 import { createClient } from "../../../supabase/client"; 
 import { toast } from "sonner";
@@ -30,8 +29,10 @@ const VentasEmpleado = () => {
 
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [errors, setErrors] = useState({});
-  const [itemNuevo, setItemNuevo] = useState({ producto_id: '', cantidad: 1, stockMax: 0, nombre: '', precio: 0 });
+  const [itemNuevo, setItemNuevo] = useState({ 
+    producto_id: '', cantidad: 1, stockMax: 0, nombre: '', 
+    precio_venta: 0, precio_credito: 0 
+  });
   const [excesoStock, setExcesoStock] = useState(false);
 
   const loadData = useCallback(async () => {
@@ -47,9 +48,10 @@ const VentasEmpleado = () => {
       return;
     }
     setLoading(true);
+    // Traemos ambos precios: precio_venta y precio_credito
     const { data } = await supabase
       .from('inventario_empleados')
-      .select(`producto_id, cantidad_actual, productos ( nombre, precio_venta )`)
+      .select(`producto_id, cantidad_actual, productos ( nombre, precio_venta, precio_credito )`)
       .eq('empleado_id', id).gt('cantidad_actual', 0);
     setStockDisponible(data || []);
     setLoading(false);
@@ -58,22 +60,26 @@ const VentasEmpleado = () => {
   useEffect(() => { loadData(); }, [loadData]);
   useEffect(() => { fetchStockVenta(empleadoId); }, [empleadoId, fetchStockVenta]);
 
-  // Validación de cantidad en tiempo real
+  // EFECTO: Actualizar precios del carrito cuando cambia el tipo de venta
+  useEffect(() => {
+    setCarrito(prevCarrito => prevCarrito.map(item => ({
+      ...item,
+      precio: esCredito ? item.precio_credito : item.precio_venta
+    })));
+  }, [esCredito]);
+
   const handleCantidadChange = (val) => {
     const cant = parseInt(val) || 0;
     setItemNuevo(prev => ({ ...prev, cantidad: val }));
-    
-    if (cant > itemNuevo.stockMax) {
-      setExcesoStock(true);
-    } else {
-      setExcesoStock(false);
-    }
+    setExcesoStock(cant > itemNuevo.stockMax);
   };
 
   const agregarAlCarrito = () => {
     if (!itemNuevo.producto_id) return toast.error("Seleccione un producto");
     if (excesoStock) return toast.error("No puedes superar el stock disponible");
-    if (itemNuevo.cantidad <= 0) return toast.error("Cantidad inválida");
+    
+    // Determinamos el precio actual según el modo de venta
+    const precioActual = esCredito ? itemNuevo.precio_credito : itemNuevo.precio_venta;
 
     const existe = carrito.find(c => c.producto_id === itemNuevo.producto_id);
     if (existe) {
@@ -81,10 +87,14 @@ const VentasEmpleado = () => {
       if (nuevaCant > itemNuevo.stockMax) return toast.error("La suma excede el stock total");
       setCarrito(carrito.map(c => c.producto_id === itemNuevo.producto_id ? { ...c, cantidad: nuevaCant } : c));
     } else {
-      setCarrito([...carrito, { ...itemNuevo, cantidad: parseInt(itemNuevo.cantidad) }]);
+      setCarrito([...carrito, { 
+        ...itemNuevo, 
+        cantidad: parseInt(itemNuevo.cantidad),
+        precio: precioActual // Precio fijado al momento de añadir
+      }]);
     }
     
-    setItemNuevo({ producto_id: '', cantidad: 1, stockMax: 0, nombre: '', precio: 0 });
+    setItemNuevo({ producto_id: '', cantidad: 1, stockMax: 0, nombre: '', precio_venta: 0, precio_credito: 0 });
     setExcesoStock(false);
     toast.success("Añadido al carrito");
   };
@@ -104,7 +114,7 @@ const VentasEmpleado = () => {
         p_items: carrito.map(item => ({
           producto_id: item.producto_id,
           cantidad: item.cantidad,
-          precio_unitario: item.precio
+          precio_unitario: item.precio // Se envía el precio que se calculó (venta o crédito)
         })),
         p_notas: notas,
         p_es_credito: esCredito,
@@ -128,7 +138,6 @@ const VentasEmpleado = () => {
 
   return (
     <CContainer className="pb-5">
-      {/* HEADER IDÉNTICO A PRODUCTOS */}
       <CCard className="mb-4 shadow-lg border-0 overflow-hidden w-100" style={{ borderRadius: '16px' }}>
         <CCardHeader className="bg-primary text-white py-3">
           <h2 className="fw-bold text-white d-flex align-items-center m-0 fs-4 text-uppercase">
@@ -139,7 +148,6 @@ const VentasEmpleado = () => {
 
       <CRow>
         <CCol lg={8}>
-          {/* SELECCIÓN DE ACTORES */}
           <CCard className="mb-4 shadow-lg border-0" style={{ borderRadius: '16px' }}>
             <CCardHeader className="py-3 border-bottom-0 bg-body-tertiary">
               <span className="fw-bold text-body-primary text-uppercase small">Configuración de Venta</span>
@@ -172,7 +180,6 @@ const VentasEmpleado = () => {
 
               <hr className="my-4" />
 
-              {/* AGREGAR PRODUCTOS */}
               <div className={`p-3 rounded-4 ${!empleadoId ? 'bg-body-secondary' : 'bg-body-secondary border border-primary border-opacity-10'}`}>
                 <CRow className="g-2 align-items-end">
                   <CCol md={7}>
@@ -186,7 +193,8 @@ const VentasEmpleado = () => {
                         setItemNuevo({
                           producto_id: e.target.value,
                           nombre: p?.productos?.nombre,
-                          precio: p?.productos?.precio_venta,
+                          precio_venta: p?.productos?.precio_venta,
+                          precio_credito: p?.productos?.precio_credito,
                           stockMax: p?.cantidad_actual,
                           cantidad: 1
                         });
@@ -195,14 +203,16 @@ const VentasEmpleado = () => {
                     >
                       <option value="">{loading ? 'Cargando...' : 'Seleccione repuesto...'}</option>
                       {stockDisponible.map(s => (
-                        <option key={s.producto_id} value={s.producto_id}>{s.productos?.nombre} (Disp: {s.cantidad_actual})</option>
+                        <option key={s.producto_id} value={s.producto_id}>
+                          {s.productos?.nombre} (Stock: {s.cantidad_actual}) - ${esCredito ? s.productos?.precio_credito : s.productos?.precio_venta}
+                        </option>
                       ))}
                     </CFormSelect>
                   </CCol>
                   <CCol md={2}>
                     <CFormLabel className="small fw-bold">Cantidad</CFormLabel>
                     <CFormInput 
-                    disabled={!empleadoId || loading}
+                      disabled={!empleadoId || loading}
                       type="number" 
                       value={itemNuevo.cantidad} 
                       className="border-0 shadow-sm text-body rounded-pill text-center"
@@ -229,7 +239,7 @@ const VentasEmpleado = () => {
             </CCardBody>
           </CCard>
 
-          {/* TABLA DE CARRITO ESTILO PRODUCTOS */}
+          {/* TABLA DE CARRITO */}
           <CCard className="shadow-lg border-0" style={{ borderRadius: '16px' }}>
             <CCardBody className="p-0 overflow-hidden">
               <CTable hover responsive align="middle" className="mb-0">
@@ -237,28 +247,22 @@ const VentasEmpleado = () => {
                   <CTableRow>
                     <CTableHeaderCell className="text-muted small text-uppercase ps-4">Producto</CTableHeaderCell>
                     <CTableHeaderCell className="text-muted small text-uppercase text-center">Cant.</CTableHeaderCell>
-                    <CTableHeaderCell className="text-muted small text-uppercase">Precio</CTableHeaderCell>
+                    <CTableHeaderCell className="text-muted small text-uppercase">Precio Unit.</CTableHeaderCell>
                     <CTableHeaderCell className="text-muted small text-uppercase text-end pe-4">Acciones</CTableHeaderCell>
                   </CTableRow>
                 </CTableHead>
                 <CTableBody>
                   {carrito.length === 0 ? (
-                    <CTableRow>
-                      <CTableDataCell colSpan="4" className="text-center py-5 text-muted">
-                        El carrito está vacío
-                      </CTableDataCell>
-                    </CTableRow>
+                    <CTableRow><CTableDataCell colSpan="4" className="text-center py-5 text-muted">El carrito está vacío</CTableDataCell></CTableRow>
                   ) : (
                     carrito.map((item) => (
                       <CTableRow key={item.producto_id}>
                         <CTableDataCell className="ps-4">
                           <div className="fw-bold text-uppercase">{item.nombre}</div>
-                          <div className="small text-muted">Stock disponible: {item.stockMax}</div>
+                          <div className="small text-muted">{esCredito ? 'Precio Crédito' : 'Precio Contado'}</div>
                         </CTableDataCell>
                         <CTableDataCell className="text-center">
-                          <CBadge color="info" shape="rounded-pill" className="px-3">
-                            {item.cantidad}
-                          </CBadge>
+                          <CBadge color="info" shape="rounded-pill" className="px-3">{item.cantidad}</CBadge>
                         </CTableDataCell>
                         <CTableDataCell className="fw-bold text-success">
                           ${item.precio?.toLocaleString()}
@@ -282,7 +286,7 @@ const VentasEmpleado = () => {
           <CCard className="shadow-lg border-0 bg-body-tertiary" style={{ borderRadius: '16px' }}>
             <CCardBody className="p-4">
               <h5 className="fw-bold mb-4 d-flex align-items-center">
-                <CIcon icon={cilWallet} className="me-2 text-primary" /> TOTAL VENTA
+                <CIcon icon={cilWallet} className="me-2 text-body" /> TOTAL VENTA
               </h5>
               
               <div className="bg-primary bg-opacity-10 p-3 rounded-4 mb-4 text-center">
@@ -299,20 +303,24 @@ const VentasEmpleado = () => {
                 </CFormSelect>
               </div>
 
-              <div className="mb-3 p-3 bg-body-secondary rounded-4">
+              <div className={`mb-3 p-3 rounded-4 border transition-all ${esCredito ? 'bg-warning bg-opacity-10 border-warning' : 'bg-body-secondary border-transparent'}`}>
                 <CFormCheck 
-                  label={<span className="fw-bold">¿Es crédito?</span>} 
+                  label={<span className="fw-bold">¿Venta a Crédito?</span>} 
                   checked={esCredito} 
                   onChange={(e) => setEsCredito(e.target.checked)} 
+                  className="cursor-pointer"
                 />
                 {esCredito && (
-                  <CFormInput 
-                    type="date" 
-                    size="sm" 
-                    className="mt-2 border-primary rounded-pill"
-                    value={fechaVencimiento}
-                    onChange={(e) => setFechaVencimiento(e.target.value)}
-                  />
+                  <div className="mt-2">
+                    <CFormLabel className="extra-small fw-bold text-muted mb-1">Fecha de Vencimiento</CFormLabel>
+                    <CFormInput 
+                      type="date" 
+                      size="sm" 
+                      className="border-warning rounded-pill"
+                      value={fechaVencimiento}
+                      onChange={(e) => setFechaVencimiento(e.target.value)}
+                    />
+                  </div>
                 )}
               </div>
 
