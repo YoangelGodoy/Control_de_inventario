@@ -352,59 +352,85 @@ const VentasCoreUI = () => {
           </CTable>
 
           {/* PAGINACIÓN INTELIGENTE */}
-                    {!loading && totalPages > 1 && (
-                      <div className="d-flex justify-content-between align-items-center mt-4">
-                        <div className="text-muted small">
-                          Página {currentPage} de {totalPages} ({totalRecords} clientes)
-                        </div>
-                        <CPagination align="end" className="mb-0">
-                          <CPaginationItem 
-                            disabled={currentPage === 1} 
-                            onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                            style={{ cursor: 'pointer' }}
-                          >
-                            <CIcon icon={cilChevronLeft} />
-                          </CPaginationItem>
-          
-                          {(() => {
-                            const pages = [];
-                            const leftSide = Math.max(1, currentPage - 1);
-                            const rightSide = Math.min(totalPages, currentPage + 1);
-          
-                            pages.push(
-                              <CPaginationItem key={1} active={currentPage === 1} onClick={() => setCurrentPage(1)}>1</CPaginationItem>
-                            );
-          
-                            if (leftSide > 2) pages.push(<CPaginationItem key="dots-l" disabled>...</CPaginationItem>);
-          
-                            for (let i = leftSide; i <= rightSide; i++) {
-                              if (i !== 1 && i !== totalPages) {
-                                pages.push(
-                                  <CPaginationItem key={i} active={currentPage === i} onClick={() => setCurrentPage(i)}>{i}</CPaginationItem>
-                                );
-                              }
-                            }
-          
-                            if (rightSide < totalPages - 1) pages.push(<CPaginationItem key="dots-r" disabled>...</CPaginationItem>);
-          
-                            if (totalPages > 1) {
-                              pages.push(
-                                <CPaginationItem key={totalPages} active={currentPage === totalPages} onClick={() => setCurrentPage(totalPages)}>{totalPages}</CPaginationItem>
-                              );
-                            }
-                            return pages;
-                          })()}
-          
-                          <CPaginationItem 
-                            disabled={currentPage === totalPages} 
-                            onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                            style={{ cursor: 'pointer' }}
-                          >
-                            <CIcon icon={cilChevronRight} />
-                          </CPaginationItem>
-                        </CPagination>
-                      </div>
-                    )}
+          {!loading && totalPages > 1 && (
+            <div className="d-flex justify-content-between align-items-center p-3 border-top">
+              <div className="text-muted small">
+                Página {currentPage} de {totalPages} ({totalRecords} movimientos)
+              </div>
+              <CPagination align="end" className="mb-0">
+                <CPaginationItem 
+                  disabled={currentPage === 1} 
+                  onClick={() => setCurrentPage(prev => prev - 1)}
+                  style={{ cursor: currentPage === 1 ? 'default' : 'pointer' }}
+                >
+                  <CIcon icon={cilChevronLeft} />
+                </CPaginationItem>
+
+                {(() => {
+                  const pages = [];
+                  const leftSide = Math.max(1, currentPage - 1);
+                  const rightSide = Math.min(totalPages, currentPage + 1);
+
+                  pages.push(
+                    <CPaginationItem 
+                      key={1} 
+                      active={currentPage === 1} 
+                      onClick={() => setCurrentPage(1)}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      1
+                    </CPaginationItem>
+                  );
+
+                  if (leftSide > 2) {
+                    pages.push(<CPaginationItem key="dots-left" disabled>...</CPaginationItem>);
+                  }
+
+                  for (let i = leftSide; i <= rightSide; i++) {
+                    if (i !== 1 && i !== totalPages) {
+                      pages.push(
+                        <CPaginationItem 
+                          key={i} 
+                          active={currentPage === i} 
+                          onClick={() => setCurrentPage(i)}
+                          style={{ cursor: 'pointer' }}
+                        >
+                          {i}
+                        </CPaginationItem>
+                      );
+                    }
+                  }
+
+                  if (rightSide < totalPages - 1) {
+                    pages.push(<CPaginationItem key="dots-right" disabled>...</CPaginationItem>);
+                  }
+
+                  if (totalPages > 1) {
+                    pages.push(
+                      <CPaginationItem 
+                        key={totalPages} 
+                        active={currentPage === totalPages} 
+                        onClick={() => setCurrentPage(totalPages)}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        {totalPages}
+                      </CPaginationItem>
+                    );
+                  }
+
+                  return pages;
+                })()}
+
+                <CPaginationItem 
+                  disabled={currentPage === totalPages} 
+                  onClick={() => setCurrentPage(prev => prev + 1)}
+                  style={{ cursor: currentPage === totalPages ? 'default' : 'pointer' }}
+                >
+                  <CIcon icon={cilChevronRight} />
+                </CPaginationItem>
+              </CPagination>
+            </div>
+          )}
         </CCardBody>
       </CCard>
 

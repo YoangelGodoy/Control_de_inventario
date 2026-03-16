@@ -259,17 +259,16 @@ const InventarioProductos = () => {
             </CTableBody>
           </CTable>
 
-          {/* PAGINACIÓN */}
+          {/* PAGINACIÓN INTELIGENTE */}
           {!loading && totalPages > 1 && (
-            <div className="d-flex justify-content-between align-items-center mt-4">
+            <div className="d-flex justify-content-between align-items-center p-3 border-top">
               <div className="text-muted small">
-                Página {currentPage} de {totalPages} ({totalRecords} productos)
+                Página {currentPage} de {totalPages} ({totalRecords} movimientos)
               </div>
               <CPagination align="end" className="mb-0">
-                {/* Botón Anterior */}
                 <CPaginationItem 
                   disabled={currentPage === 1} 
-                  onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                  onClick={() => setCurrentPage(prev => prev - 1)}
                   style={{ cursor: currentPage === 1 ? 'default' : 'pointer' }}
                 >
                   <CIcon icon={cilChevronLeft} />
@@ -280,7 +279,6 @@ const InventarioProductos = () => {
                   const leftSide = Math.max(1, currentPage - 1);
                   const rightSide = Math.min(totalPages, currentPage + 1);
 
-                  // Siempre mostrar la primera página
                   pages.push(
                     <CPaginationItem 
                       key={1} 
@@ -292,12 +290,10 @@ const InventarioProductos = () => {
                     </CPaginationItem>
                   );
 
-                  // Puntos suspensivos a la izquierda
                   if (leftSide > 2) {
                     pages.push(<CPaginationItem key="dots-left" disabled>...</CPaginationItem>);
                   }
 
-                  // Páginas centrales (alrededor de la actual)
                   for (let i = leftSide; i <= rightSide; i++) {
                     if (i !== 1 && i !== totalPages) {
                       pages.push(
@@ -313,12 +309,10 @@ const InventarioProductos = () => {
                     }
                   }
 
-                  // Puntos suspensivos a la derecha
                   if (rightSide < totalPages - 1) {
                     pages.push(<CPaginationItem key="dots-right" disabled>...</CPaginationItem>);
                   }
 
-                  // Siempre mostrar la última página si existe
                   if (totalPages > 1) {
                     pages.push(
                       <CPaginationItem 
@@ -335,10 +329,9 @@ const InventarioProductos = () => {
                   return pages;
                 })()}
 
-                {/* Botón Siguiente */}
                 <CPaginationItem 
                   disabled={currentPage === totalPages} 
-                  onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                  onClick={() => setCurrentPage(prev => prev + 1)}
                   style={{ cursor: currentPage === totalPages ? 'default' : 'pointer' }}
                 >
                   <CIcon icon={cilChevronRight} />
