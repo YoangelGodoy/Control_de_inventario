@@ -331,7 +331,6 @@ const ClientesCoreUI = () => {
                   value={formData.identificacion}
                   onChange={handleChange}
                   required
-                  disabled={!!updateData}
                   placeholder="Ej: V-12345678"
                   invalid={idError}
                 />
